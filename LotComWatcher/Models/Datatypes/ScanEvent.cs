@@ -51,7 +51,7 @@ public sealed class ScanEvent
     /// The Date and Time on which the ScanEvent was executed.
     /// </summary>
     private DateTime Date;
-    
+
     /// <summary>
     /// The IP Address of the Scanner producing the ScanEvent.
     /// </summary>
@@ -61,4 +61,13 @@ public sealed class ScanEvent
     /// The Label that produced the ScanEvent.
     /// </summary>
     private LabelInfo Label;
+    
+    /*
+    My task for Jared:
+        Can you create a constructor for this class that will convert the 
+        data from a string in the SCAN-OUTPUT file to a ScanEvent object?
+        Example:
+            I will pass the following string object to this constructor:
+            ""
+    */
 }
