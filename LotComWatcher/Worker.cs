@@ -1,3 +1,4 @@
+using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
 
 namespace LotComWatcher;
@@ -32,9 +33,17 @@ public class Worker : BackgroundService
                     .Select(ScanEvent.ParseCSV)
                     .ToList();
                 ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
-                if (ParseResults is null) 
+                if (ParseResults is null)
                 {
                     Console.WriteLine("No new Scan Events.");
+                }
+                else
+                {
+                    // Route ScanEvents
+                    foreach (ScanEvent _event in ParseResults)
+                    {
+                        EventRouter.Route(_event);
+                    }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
