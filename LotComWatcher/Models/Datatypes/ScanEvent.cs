@@ -1,12 +1,14 @@
 using System.Globalization;
 using System.Net;
-using System.Reflection.Emit;
 using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Enums;
 using LotComWatcher.Models.Extensions;
 
 namespace LotComWatcher.Models.Datatypes;
 
+/// <summary>
+/// Provides datatype structure for Scan Events produced by the LotCom System Scanners.
+/// </summary>
 public sealed class ScanEvent
 {
     /// <summary>
@@ -50,9 +52,13 @@ public sealed class ScanEvent
         /// </summary>
         public Shift ProductionShift = ProductionShift;
 
+        /// <summary>
+        /// The Operator by which the Label was produced/printed.
+        /// </summary>
         public Operator ProductionOperator = ProductionOperator;
 
     }
+
     /// <summary>
     /// The Date and Time on which the ScanEvent was executed.
     /// </summary>
@@ -67,14 +73,36 @@ public sealed class ScanEvent
     /// The Label that produced the ScanEvent.
     /// </summary>
     public LabelInfo Label;
+
+    /// <summary>
+    /// Creates a new ScanEvent object to verify and structure the passed data.
+    /// </summary>
+    /// <param name="Date"></param>
+    /// <param name="Address"></param>
+    /// <param name="Process"></param>
+    /// <param name="Part"></param>
+    /// <param name="Quantity"></param>
+    /// <param name="VariableFields"></param>
+    /// <param name="ProductionDate"></param>
+    /// <param name="ProductionShift"></param>
+    /// <param name="ProductionOperator"></param>
     public ScanEvent(DateTime Date, IPAddress Address, Process Process, Part Part, Quantity Quantity, VariableFieldSet VariableFields, DateTime ProductionDate, Shift ProductionShift, Operator ProductionOperator)
     {
         this.Date = Date;
         this.Address = Address;
-        Label = new LabelInfo(Process, Part, Quantity, VariableFields, ProductionDate, ProductionShift, ProductionOperator);
+        Label = new LabelInfo
+        (
+            Process,
+            Part,
+            Quantity,
+            VariableFields,
+            ProductionDate,
+            ProductionShift,
+            ProductionOperator
+        );            
     }
-    
-     /// <summary>
+
+    /// <summary>
     /// Attempts to create a ScanEvent object from a passed Comma-separated value string.
     /// </summary>
     /// <param name="CSVLine"></param>
@@ -186,21 +214,40 @@ public sealed class ScanEvent
             }
         }
         // create a new ScanEvent from the retrieved Process, Part, VariableFields, and other information
-        return new ScanEvent
-        (
-            Date: DateTime.ParseExact(SplitLine[0], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-            Address: IPAddress.Parse(SplitLine[1]),
-            Process: Process,
-            Part: Part,
-            Quantity: new Quantity(int.Parse(SplitLine[5])),
-            VariableFields: VariableFields,
-            ProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-            ProductionShift: ShiftExtensions.FromString(SplitLine[^2]),
-            ProductionOperator: new Operator(SplitLine[^1])
-        );
+        try
+        {
+            return new ScanEvent
+            (
+                Date: DateTime.ParseExact(SplitLine[0], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
+                Address: IPAddress.Parse(SplitLine[1]),
+                Process: Process,
+                Part: Part,
+                Quantity: new Quantity(int.Parse(SplitLine[5])),
+                VariableFields: VariableFields,
+                ProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
+                ProductionShift: ShiftExtensions.FromString(SplitLine[^2]),
+                ProductionOperator: new Operator(SplitLine[^1])
+            );
+        }
+        // there was a null argument passed to one of the Parses
+        catch (ArgumentNullException)
+        {
+            throw new ArgumentException("One or more fields in 'CSVLine' was null for a required value.");
+        }
+        // the ShiftExtensions.FromString method was passed an invalid value
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        // one of the values was in an invalid format
+        catch (FormatException)
+        {
+            throw;
+        }
+        // the bytes passed to int.Parse overflowed the Int32 size limitation
+        catch (OverflowException)
+        {
+            throw;
+        }
     }
-   
-
-
-    
 }
