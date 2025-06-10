@@ -1,9 +1,4 @@
-using System.Globalization;
-using System.Net;
 using LotComWatcher.Exceptions;
-using LotComWatcher.Models.Datasources;
-using LotComWatcher.Models.Datatypes;
-using LotComWatcher.Models.Extensions;
 
 namespace LotComWatcher;
 
