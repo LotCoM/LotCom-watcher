@@ -72,22 +72,6 @@ public sealed class ScanEvent
      
         Label = new LabelInfo(Process, Part, Quantity, VariableFields, ProductionDate, ProductionShift);
 
-        /*
-        My task for Jared:
-            Can you create a constructor for this class that will convert the 
-            data from a string in the SCAN-OUTPUT file to a ScanEvent object?
-        
-        Example:    
-            I will pass the following string object to this constructor:
-            "06/09/2025-15:15:37,172.16.1.90,4420-DC-Diecast,00-T20-532AP-A000-Z1,HOUSINGPIVOT*,264,439,27,06/06/2025-19:36:27,2,MA"
-
-            I expect to get a full ScanEvent object that has all of this data
-            available for us to use in our new Program.
-
-            You will find that I've already added the Models from the
-            Printer app into this Project as well. Use the type of the 
-            class' properties to guide you. And of course, ask for help!
-        */
     }
    
 
