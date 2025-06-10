@@ -22,4 +22,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\LotCom-libraries\LotCom\LotCom.csproj" />
+  </ItemGroup>
 </Project>

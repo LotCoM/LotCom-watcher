@@ -1,4 +1,4 @@
-namespace LotComWatcher.Exceptions;
+namespace LotComWatcher.Models.Exceptions;
 
 /// <summary>
 /// Special exception type to indicate an error accessing the Scan Output file.

@@ -1,4 +1,4 @@
-using LotComWatcher.Exceptions;
+using LotComWatcher.Models.Exceptions;
 
 namespace LotComWatcher;
 
