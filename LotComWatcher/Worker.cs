@@ -1,3 +1,5 @@
+using LotComWatcher.Models.Datatypes;
+
 namespace LotComWatcher;
 
 public class Worker : BackgroundService
@@ -12,16 +14,27 @@ public class Worker : BackgroundService
         this.Reader = Reader;
     }
 
+    /// <summary>
+    /// Defines the service's logic while running.
+    /// </summary>
+    /// <param name="stoppingToken"></param>
+    /// <returns></returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // run in a loop as long as the service is not stopped
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
+                // read the Scan Output file and parse a ScanEvent from each of the result lines
                 string[] Results = await Reader.Read();
-                foreach (string _line in Results)
+                List<Task<ScanEvent>> ParseTasks = Results
+                    .Select(ScanEvent.ParseCSV)
+                    .ToList();
+                ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
+                if (ParseResults is null) 
                 {
-                    Logger.LogWarning(_line);
+                    Console.WriteLine("No new Scan Events.");
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
