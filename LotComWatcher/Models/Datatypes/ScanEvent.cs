@@ -1,8 +1,9 @@
 using System.Globalization;
 using System.Net;
-using LotComWatcher.Models.Datasources;
-using LotComWatcher.Models.Enums;
-using LotComWatcher.Models.Extensions;
+using LotCom.Database;
+using LotCom.Enums;
+using LotCom.Extensions;
+using LotCom.Types;
 
 namespace LotComWatcher.Models.Datatypes;
 
