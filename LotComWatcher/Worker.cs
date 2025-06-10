@@ -1,3 +1,5 @@
+using LotComWatcher.Models.Datatypes;
+
 namespace LotComWatcher;
 
 public class Worker : BackgroundService
@@ -22,6 +24,7 @@ public class Worker : BackgroundService
                 foreach (string _line in Results)
                 {
                     Logger.LogWarning(_line);
+                    await ScanEvent.ParseCSV(_line);
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
