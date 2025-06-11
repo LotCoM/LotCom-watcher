@@ -42,7 +42,10 @@ public class Worker : BackgroundService
                     // Route ScanEvents
                     foreach (ScanEvent _event in ParseResults)
                     {
-                        EventRouter.Route(_event);
+                        if (EventRouter.Route(_event))
+                        {
+                            Console.WriteLine("Routed successfully.");
+                        }
                     }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
