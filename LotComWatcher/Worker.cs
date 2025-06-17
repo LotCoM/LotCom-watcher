@@ -35,7 +35,7 @@ public class Worker : BackgroundService
                 ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
                 if (ParseResults is null)
                 {
-                    Console.WriteLine("No new Scan Events.");
+                    Logger.LogInformation("No new Scan Events.");
                 }
                 else
                 {
@@ -44,7 +44,11 @@ public class Worker : BackgroundService
                     {
                         if (EventRouter.Route(_event))
                         {
-                            Console.WriteLine("Routed successfully.");
+                            Logger.LogInformation("Unique Scan; inserted successfully.");
+                        }
+                        else
+                        {
+                            Logger.LogWarning("Duplicate Scan; insertion blocked.");
                         }
                     }
                 }
