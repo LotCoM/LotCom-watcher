@@ -1,3 +1,5 @@
+using LotCom.Enums;
+using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
 using LotComWatcher.Models.Services;
@@ -15,11 +17,47 @@ public static class EventRouter
     private static readonly string ScanFolder = "\\\\144.133.122.1\\Lot Control Management\\Database\\data_tables\\scans";
 
     /// <summary>
+    /// Attempts to retrieve and construct a SerialNumber object from ScanEvent.
+    /// </summary>
+    /// <param name="Event"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentException"></exception>
+    private static SerialNumber GetSerialNumber(ScanEvent Event)
+    {
+        SerialNumber EventNumber;
+        Process EventProcess = Event.Label.Process;
+        // ScanEvent uses a JBK Number
+        if
+        (
+            EventProcess.PassThroughType == PassThroughType.JBK ||
+            EventProcess.Serialization == SerializationMode.JBK
+        )
+        {
+            EventNumber = new SerialNumber(SerializationMode.JBK, Event.Label.Part, Event.Label.VariableFields.JBKNumber!.Literal);
+        }
+        // ScanEvent uses a Lot Number
+        else if
+        (
+            EventProcess.PassThroughType == PassThroughType.Lot ||
+            EventProcess.Serialization == SerializationMode.Lot
+        )
+        {
+            EventNumber = new SerialNumber(SerializationMode.Lot, Event.Label.Part, Event.Label.VariableFields.LotNumber!.Literal);
+        }
+        // some mis-configuration of SerializationMode and PassThroughType caused an error
+        else
+        {
+            throw new ArgumentException($"Cannot retrieve a SerialNumber from the ScanEvent '{Event.ToCSV()}'.");
+        }
+        return EventNumber;
+    }
+
+    /// <summary>
     /// Attempts to route and insert ScanEvent into its appropriate Process datatable.
     /// </summary>
     /// <param name="ScanEvent"></param>
     /// <returns></returns>
-    public static bool Route(ScanEvent ScanEvent)
+    public static string Route(ScanEvent ScanEvent)
     {
         // prepare the Table and DatabaseSet
         string TablePath = "";
@@ -45,19 +83,26 @@ public static class EventRouter
                 InnerException: _ex
             );
         }
+        // elicit the Serial Number from the new Scan Event
+        SerialNumber EventNumber = GetSerialNumber(ScanEvent);
+        // check for previous process scan entry
+        if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
+        {
+            return "No Scan Entry found in previous Process; insertion blocked.";
+        }
         // Adding the most recent entry to the bottom of our file.
-        if (ScanEventInsertionService.ValidateInsertion(ScanEvent, DatabaseSet))
+        if (ScanEventInsertionService.ValidateDuplicateScan(ScanEvent, EventNumber, DatabaseSet))
         {
             // convert the ScanEvent to a string and append it to the end of the DatabaseSet
             string newEntry = ScanEvent.ToCSV();
             DatabaseSet = DatabaseSet.Append(newEntry);
             // save the file with the new entry appended
             File.WriteAllLines(TablePath, DatabaseSet);
-            return true;
+            return "Valid Scan Event; Successfully inserted.";
         }
         else
         {
-            return false;
+            return "Duplicate Scan Event; insertion blocked.";
         }
     }
 }

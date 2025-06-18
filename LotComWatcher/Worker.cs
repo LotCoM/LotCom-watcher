@@ -42,14 +42,8 @@ public class Worker : BackgroundService
                     // Route ScanEvents
                     foreach (ScanEvent _event in ParseResults)
                     {
-                        if (EventRouter.Route(_event))
-                        {
-                            Logger.LogInformation("Unique Scan; inserted successfully.");
-                        }
-                        else
-                        {
-                            Logger.LogWarning("Duplicate Scan; insertion blocked.");
-                        }
+                        string Message = EventRouter.Route(_event);
+                        Logger.LogInformation(Message);
                     }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
