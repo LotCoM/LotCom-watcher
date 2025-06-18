@@ -85,10 +85,14 @@ public static class EventRouter
         }
         // elicit the Serial Number from the new Scan Event
         SerialNumber EventNumber = GetSerialNumber(ScanEvent);
-        // check for previous process scan entry
-        if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
+        // check for a match in the Previous Process scans Datatable (only if configured for the ScanEvent's Process)
+        string? PreviousProcess = ScanEvent.Label.Process.PreviousProcesses[0];
+        if (PreviousProcess is not null && !PreviousProcess.Equals(""))
         {
-            return "No Scan Entry found in previous Process; insertion blocked.";
+            if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
+            {
+                return "No Scan Entry found in previous Process; insertion blocked.";
+            }
         }
         // Adding the most recent entry to the bottom of our file.
         if (ScanEventInsertionService.ValidateDuplicateScan(ScanEvent, EventNumber, DatabaseSet))
