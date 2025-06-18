@@ -99,14 +99,14 @@ public static class ScanEventInsertionService
         try
         {
             // Creating TablePath that points us to the correct folder which is the process name. 
-            TablePath = $"{ScanFolder}\\{NewEvent.Label.Process.PreviousProcesses[0]!.FullName}.txt";
+            TablePath = $"{ScanFolder}\\{NewEvent.Label.Process.PreviousProcesses[0]}.txt";
             // Creating an array that is reading all the lines through the TablePath file.
             DatabaseSet = File.ReadAllLines(TablePath);
         }
         // the file could not be found by the Router
         catch (FileNotFoundException)
         {
-            throw new ProcessNameException($"Could not find a table for the Process '{NewEvent.Label.Process.PreviousProcesses[0]!.FullName}'.");
+            throw new ProcessNameException($"Could not find a table for the Process '{NewEvent.Label.Process.PreviousProcesses[0]}'.");
         }
         // there was another issue accessing the file
         catch (SystemException _ex)
