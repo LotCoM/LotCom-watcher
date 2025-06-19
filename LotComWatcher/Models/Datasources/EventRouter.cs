@@ -1,6 +1,7 @@
 using LotCom.Enums;
 using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
+using LotComWatcher.Models.Enums;
 using LotComWatcher.Models.Exceptions;
 using LotComWatcher.Models.Services;
 
@@ -57,7 +58,7 @@ public static class EventRouter
     /// </summary>
     /// <param name="ScanEvent"></param>
     /// <returns></returns>
-    public static string Route(ScanEvent ScanEvent)
+    public static InsertionMessage Route(ScanEvent ScanEvent)
     {
         // prepare the Table and DatabaseSet
         string TablePath = "";
@@ -91,7 +92,7 @@ public static class EventRouter
         {
             if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
             {
-                return "No Scan Entry found in previous Process; insertion blocked.";
+                return InsertionMessage.MissingPrevious;
             }
         }
         // Adding the most recent entry to the bottom of our file.
@@ -102,11 +103,11 @@ public static class EventRouter
             DatabaseSet = DatabaseSet.Append(newEntry);
             // save the file with the new entry appended
             File.WriteAllLines(TablePath, DatabaseSet);
-            return "Valid Scan Event; Successfully inserted.";
+            return InsertionMessage.ValidEntry;
         }
         else
         {
-            return "Duplicate Scan Event; insertion blocked.";
+            return InsertionMessage.DuplicateScan;
         }
     }
 }
