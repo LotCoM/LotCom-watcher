@@ -1,5 +1,6 @@
 using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
+using LotComWatcher.Models.Enums;
 
 namespace LotComWatcher;
 
@@ -42,8 +43,20 @@ public class Worker : BackgroundService
                     // Route ScanEvents
                     foreach (ScanEvent _event in ParseResults)
                     {
-                        string Message = EventRouter.Route(_event);
-                        Logger.LogInformation(Message);
+                        Models.Enums.InsertionMessage Message = EventRouter.Route(_event);
+                        // Logger.LogInformation(Message);
+                        if (Message == InsertionMessage.MissingPrevious)
+                        {
+                            Console.WriteLine("Missing Previous Process");
+                        }
+                        else if (Message == InsertionMessage.DuplicateScan)
+                        {
+                            Console.WriteLine("Duplicate Scan");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Valid Entry");
+                        }
                     }
                 }
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
