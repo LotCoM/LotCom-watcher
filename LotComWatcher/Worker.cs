@@ -1,3 +1,4 @@
+using System.Threading.Tasks;
 using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
@@ -34,19 +35,20 @@ public class Worker : BackgroundService
     /// </summary>
     /// <param name="RawScans"></param>
     /// <returns></returns>
-    private List<Task<ScanEvent>> ClearFaultingParses(List<string> RawScans)
+    private async Task<List<Task<ScanEvent>>> ClearFaultingParses(List<string> RawScans)
     {
         List<Task<ScanEvent>> ParseTasks = [];
         // check for faulting parses, remove them from the list, and log them
         foreach (string _raw in RawScans)
         {
-            try
+            Task<ScanEvent> Parse = ScanEvent.ParseCSV(_raw);
+            if (!Parse.IsFaulted)
             {
-                ParseTasks.Add(ScanEvent.ParseCSV(_raw));
+                ParseTasks.Add(Parse);
             }
-            catch (Exception _ex)
+            else
             {
-                FailedScanService.LogFailedScanEvent(_raw, _ex);
+                await FailedScanService.LogFailedScanEvent(_raw, Parse.Exception);
             }
         }
         return ParseTasks;
@@ -77,7 +79,7 @@ public class Worker : BackgroundService
                     Environment.Exit(1);
                 }
                 // asynchronously parse each Raw Scan into a ScanEvent object
-                List<Task<ScanEvent>> ParseTasks = ClearFaultingParses(Results);
+                List<Task<ScanEvent>> ParseTasks = await ClearFaultingParses(Results);
                 ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
                 // confirm that the parsing did not fail and/or return null
                 if (ParseResults is null)
