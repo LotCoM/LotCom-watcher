@@ -1,11 +1,11 @@
 namespace LotComWatcher.Models.Services;
 
-public sealed class FailedScanService
+public static class FailedScanService
 {
     /// <summary>
     /// The failed scan log file that contains information regarding failed scan events from LotCom Scanners.
     /// </summary>
-    private readonly string OutputFile = @"\\144.133.122.1\Lot Control Management\Database\logs\failed_scans.log";
+    private const string LogFile = @"\\144.133.122.1\Lot Control Management\Database\logs\failed_scans.log";
 
     /// <summary>
     /// Logs a failure to process a Scan string RawEvent due to an unexpected exception Cause.
@@ -13,7 +13,7 @@ public sealed class FailedScanService
     /// <param name="RawEvent"></param>
     /// <param name="Cause"></param>
     /// <returns>The success status of the Log attempt.</returns>
-    public static bool LogFailedScanEvent(string RawEvent, Exception Cause)
+    public static async Task LogFailedScanEvent(string RawEvent, Exception Cause)
     {
         string Log =
             $"[{DateTime.Now}] Could not process '{RawEvent}'." +
@@ -25,11 +25,12 @@ public sealed class FailedScanService
         try
         {
             Console.WriteLine(Log);
-            return true;
+            await File.WriteAllTextAsync(LogFile, $"{Log}\n--------------------\n");
         }
         catch
         {
-            return false;
+            Console.WriteLine("Failed to log the following failed scan string:");
+            Console.WriteLine(Log);
         }
     } 
 }
