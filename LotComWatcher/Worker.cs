@@ -29,6 +29,30 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
+    /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
+    /// Logs the failed Tasks in the failed scans log file.
+    /// </summary>
+    /// <param name="RawScans"></param>
+    /// <returns></returns>
+    private List<Task<ScanEvent>> ClearFaultingParses(List<string> RawScans)
+    {
+        List<Task<ScanEvent>> ParseTasks = [];
+        // check for faulting parses, remove them from the list, and log them
+        foreach (string _raw in RawScans)
+        {
+            try
+            {
+                ParseTasks.Add(ScanEvent.ParseCSV(_raw));
+            }
+            catch (Exception _ex)
+            {
+                FailedScanService.LogFailedScanEvent(_raw, _ex);
+            }
+        }
+        return ParseTasks;
+    }
+
+    /// <summary>
     /// Defines the service's event loop while running.
     /// </summary>
     /// <param name="stoppingToken"></param>
@@ -41,7 +65,7 @@ public class Worker : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 // read the Scan Output file
-                string[] Results = [];
+                List<string> Results = [];
                 try
                 {
                     Results = await Reader.Read();
@@ -53,9 +77,7 @@ public class Worker : BackgroundService
                     Environment.Exit(1);
                 }
                 // asynchronously parse each Raw Scan into a ScanEvent object
-                List<Task<ScanEvent>> ParseTasks = Results
-                    .Select(ScanEvent.ParseCSV)
-                    .ToList();
+                List<Task<ScanEvent>> ParseTasks = ClearFaultingParses(Results);
                 ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
                 // confirm that the parsing did not fail and/or return null
                 if (ParseResults is null)
