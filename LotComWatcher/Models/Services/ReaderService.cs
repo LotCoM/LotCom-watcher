@@ -14,7 +14,7 @@ public sealed class ReaderService
     /// </summary>
     /// <returns>A List of Scan results as strings.</returns>
     /// <exception cref="OutputFileAccessException"></exception>
-    public async Task<string[]> Read()
+    public async Task<List<string>> Read()
     {
         // attempt to read the Scan Output file and throw an access exception if the read fails
         try
@@ -22,7 +22,7 @@ public sealed class ReaderService
             // save the Raw Scans from the file, clear its contents, and return the Scans
             string[] RawScans = await File.ReadAllLinesAsync(OutputFile);
             await File.WriteAllTextAsync(OutputFile, "");
-            return RawScans;
+            return RawScans.ToList();
         }
         catch (OperationCanceledException _ex)
         {
