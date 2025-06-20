@@ -19,7 +19,10 @@ public sealed class ReaderService
         // attempt to read the Scan Output file and throw an access exception if the read fails
         try
         {
-            return await File.ReadAllLinesAsync(OutputFile);
+            // save the Raw Scans from the file, clear its contents, and return the Scans
+            string[] RawScans = await File.ReadAllLinesAsync(OutputFile);
+            await File.WriteAllTextAsync(OutputFile, "");
+            return RawScans;
         }
         catch (OperationCanceledException _ex)
         {
