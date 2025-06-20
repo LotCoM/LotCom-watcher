@@ -1,6 +1,6 @@
 using LotComWatcher.Models.Exceptions;
 
-namespace LotComWatcher;
+namespace LotComWatcher.Models.Services;
 
 public sealed class ReaderService
 {
