@@ -1,4 +1,5 @@
 using LotComWatcher;
+using LotComWatcher.Models.Services;
 
 var builder = Host.CreateApplicationBuilder(args);
 // set the service name
