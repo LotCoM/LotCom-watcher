@@ -1,13 +1,28 @@
+using System.Threading.Tasks;
+using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
+using LotComWatcher.Models.Enums;
+using LotComWatcher.Models.Services;
 
 namespace LotComWatcher;
 
 public class Worker : BackgroundService
 {
+    /// <summary>
+    /// Logger service that provides several logging options for uniform output to the console.
+    /// </summary>
     private readonly ILogger<Worker> Logger;
 
+    /// <summary>
+    /// Reader service that provides resillient asynchronous reading of files to the service.
+    /// </summary>
     private readonly ReaderService Reader;
 
+    /// <summary>
+    /// Creates a Service Worker that performs the Service's main event/work loop.
+    /// </summary>
+    /// <param name="Logger"></param>
+    /// <param name="Reader"></param>
     public Worker(ILogger<Worker> Logger, ReaderService Reader)
     {
         this.Logger = Logger;
@@ -15,7 +30,32 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Defines the service's logic while running.
+    /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
+    /// Logs the failed Tasks in the failed scans log file.
+    /// </summary>
+    /// <param name="RawScans"></param>
+    /// <returns></returns>
+    private async Task<List<Task<ScanEvent>>> ClearFaultingParses(List<string> RawScans)
+    {
+        List<Task<ScanEvent>> ParseTasks = [];
+        // check for faulting parses, remove them from the list, and log them
+        foreach (string _raw in RawScans)
+        {
+            Task<ScanEvent> Parse = ScanEvent.ParseCSV(_raw);
+            if (!Parse.IsFaulted)
+            {
+                ParseTasks.Add(Parse);
+            }
+            else
+            {
+                await FailedScanService.LogFailedScanEvent(_raw, Parse.Exception);
+            }
+        }
+        return ParseTasks;
+    }
+
+    /// <summary>
+    /// Defines the service's event loop while running.
     /// </summary>
     /// <param name="stoppingToken"></param>
     /// <returns></returns>
@@ -26,17 +66,49 @@ public class Worker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // read the Scan Output file and parse a ScanEvent from each of the result lines
-                string[] Results = await Reader.Read();
-                List<Task<ScanEvent>> ParseTasks = Results
-                    .Select(ScanEvent.ParseCSV)
-                    .ToList();
-                ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
-                if (ParseResults is null) 
+                // read the Scan Output file
+                List<string> Results = [];
+                try
                 {
-                    Console.WriteLine("No new Scan Events.");
+                    Results = await Reader.Read();
                 }
-                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
+                catch (OperationCanceledException _ex)
+                {
+                    // log the exception and exit the Service
+                    Logger.LogError(_ex, "{Message}", _ex.Message);
+                    Environment.Exit(1);
+                }
+                // asynchronously parse each Raw Scan into a ScanEvent object
+                List<Task<ScanEvent>> ParseTasks = await ClearFaultingParses(Results);
+                ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
+                // confirm that the parsing did not fail and/or return null
+                if (ParseResults is null)
+                {
+                    Logger.LogInformation("No new Scan Events.");
+                }
+                else
+                {
+                    // Route ScanEvents
+                    foreach (ScanEvent _event in ParseResults)
+                    {
+                        // capture the message from the Router on each ScanEvent and Log a respective string
+                        InsertionMessage Message = EventRouter.Route(_event);
+                        if (Message == InsertionMessage.MissingPrevious)
+                        {
+                            Logger.LogWarning("Missing Previous Process");
+                        }
+                        else if (Message == InsertionMessage.DuplicateScan)
+                        {
+                            Logger.LogWarning("Duplicate Scan");
+                        }
+                        else
+                        {
+                            Logger.LogInformation("Valid Entry");
+                        }
+                    }
+                }
+                // loop every 500 milliseconds (1/2 second)
+                await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
             }
         }
         catch (OperationCanceledException)

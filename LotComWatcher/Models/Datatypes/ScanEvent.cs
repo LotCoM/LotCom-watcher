@@ -100,7 +100,7 @@ public sealed class ScanEvent
             ProductionDate,
             ProductionShift,
             ProductionOperator
-        );            
+        );
     }
 
     /// <summary>
@@ -250,5 +250,11 @@ public sealed class ScanEvent
         {
             throw;
         }
+    }
+    public string ToCSV()
+    {
+        string CSVLine = $"{Label.Process},{new Timestamp(Date).Stamp},{Address},{Label.Part.ToCSV()},{Label.Quantity},{Label.VariableFields.ToCSV()},{new Timestamp(Label.ProductionDate).Stamp},{ShiftExtensions.ToString(Label.ProductionShift)},{Label.ProductionOperator}";
+
+        return CSVLine;
     }
 }
