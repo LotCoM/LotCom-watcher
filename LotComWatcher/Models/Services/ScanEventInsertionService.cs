@@ -80,7 +80,6 @@ public static class ScanEventInsertionService
         (
             EventNumber.GetFormattedValue().Equals(EntrySerialNumber) &&
             EventNumber.Part.ModelNumber.Equals(EntryModelNumber) &&
-            // we need two dates and a way to compare their range difference
             CompareDatesAsRange(Event.Label.ProductionDate, EntryDate, 60)
         )
         {
