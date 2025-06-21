@@ -104,14 +104,54 @@ public class Worker : BackgroundService
                     {
                         // capture the message from the Router on each ScanEvent and Log a respective string
                         InsertionMessage Message = EventRouter.Route(_event);
+                        // no scan occurred at the previous process
                         if (Message == InsertionMessage.MissingPrevious)
                         {
+                            // log to the console and send a message to the Scanner
                             Logger.LogWarning("Missing Previous Process");
+                            try
+                            {
+                                await Network.SendMissingPreviousScanError
+                                (
+                                    ScannerAddress: _event.Address,
+                                    Duration: 15,
+                                    PreviousProcess: _event.Label.Process.PreviousProcesses[0]!
+                                );
+                            }
+                            // the message failed to send
+                            catch (HttpRequestException)
+                            {
+                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
+                            }
+                            catch (ArgumentException)
+                            {
+                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                            }
                         }
+                        // the Label was already scanned at this Process
                         else if (Message == InsertionMessage.DuplicateScan)
                         {
+                            // log to the console and send a message to the Scanner
                             Logger.LogWarning("Duplicate Scan");
+                            try
+                            {
+                                await Network.SendDuplicateScanError
+                                (
+                                    ScannerAddress: _event.Address,
+                                    Duration: 15
+                                );
+                            }
+                            // the message failed to send
+                            catch (HttpRequestException)
+                            {
+                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
+                            }
+                            catch (ArgumentException)
+                            {
+                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                            }
                         }
+                        // the Scan was valid
                         else
                         {
                             Logger.LogInformation("Valid Entry");
