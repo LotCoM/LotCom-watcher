@@ -7,7 +7,7 @@ public sealed class ReaderService
     /// <summary>
     /// The raw output file that contains scan results from LotCom Scanners.
     /// </summary>
-    private const string OutputFile = @"C:\Users\ritchasonm\Desktop\Test\SCAN-OUTPUT.txt"; // @"\\144.133.122.1\Lot Control Management\SCAN-OUTPUT.txt";
+    private const string OutputFile = @"\\144.133.122.1\Lot Control Management\SCAN-OUTPUT.txt";
 
     /// <summary>
     /// Provides reading capabilities on the Scanner output file.
