@@ -96,4 +96,84 @@ public class NetworkService
         // message was sent successfully
         return true;
     }
+
+    /// <summary>
+    /// Attempts to send a Data Validation error code to ScannerAddress.
+    /// Displays LCDText on the Scanner's LCD screen for Duration seconds.
+    /// </summary>
+    /// <param name="ScannerAddress"></param>
+    /// <param name="LCDText"></param>
+    /// <param name="Duration"></param>
+    /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    public async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
+    {
+        // send Data Validation Failure and Send Alert DMCCs to the Scanner
+        try
+        {
+            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
+            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"{LCDText}\"\r\n");
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Attempts to send a Missing Previous Scan error code to ScannerAddress.
+    /// Displays a notice on the Scanner's LCD screen for Duration seconds.
+    /// </summary>
+    /// <param name="ScannerAddress"></param>
+    /// <param name="Duration"></param>
+    /// <param name="PreviousProcess"></param>
+    /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, string PreviousProcess)
+    {
+        // send Data Validation Failure and Send Alert DMCCs to the Scanner
+        try
+        {
+            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
+            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"This Label was not scanned by {PreviousProcess}. Basket is not valid for use.\"\r\n");
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Attempts to send a Duplicate Scan error code to ScannerAddress.
+    /// Displays a notice on the Scanner's LCD screen for Duration seconds.
+    /// </summary>
+    /// <param name="ScannerAddress"></param>
+    /// <param name="Duration"></param>
+    /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    public async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
+    {
+        // send Data Validation Failure and Send Alert DMCCs to the Scanner
+        try
+        {
+            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
+            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Duplicate Label scanned.\"\r\n");
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        return true;
+    }
 }
