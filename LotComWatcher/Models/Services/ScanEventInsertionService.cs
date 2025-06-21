@@ -68,20 +68,17 @@ public static class ScanEventInsertionService
     // validate JBK, a date within 2 months, and a model code
     private static bool ComparePreviousEvent(ScanEvent Event, SerialNumber EventNumber, string Entry)
     {
+        // get entry information out of CSV
         string[] SplitEntry = Entry.Split(",");
         string EntryPartNumber = SplitEntry[3];
         string EntrySerialNumber = SplitEntry[6];
         string EntryDate = SplitEntry[^3];
-
         string EntryModelNumber = EntryPartNumber.Split("-")[1];
-
-        // compare the SerialNumbers and Dates
-        if
-        (
-            EventNumber.GetFormattedValue().Equals(EntrySerialNumber) &&
-            EventNumber.Part.ModelNumber.Equals(EntryModelNumber) &&
-            CompareDatesAsRange(Event.Label.ProductionDate, EntryDate, 60)
-        )
+        // compare the Serial Numbers, Model Numbers, and Dates of the existing Entry and the new Event
+        bool SerialNumberOK = EventNumber.GetFormattedValue().Equals(EntrySerialNumber);
+        bool ModelNumberOK = Event.Label.Part.ModelNumber.Code.Equals(EntryModelNumber);
+        bool DateRangeOK = CompareDatesAsRange(Event.Label.ProductionDate, EntryDate, 60);
+        if (SerialNumberOK && ModelNumberOK && DateRangeOK)
         {
             return true;
         }
@@ -118,17 +115,14 @@ public static class ScanEventInsertionService
         }
         // elicit the Serial Number from the new Scan Event
         // compare the ScanEvent data to each of the DatabaseSet entries
-        List<string> Matches = DatabaseSet
-            .Where(x => ComparePreviousEvent(NewEvent, EventNumber, x))
-            .ToList();
-            if (Matches.Count > 0)
+        foreach (string _entry in DatabaseSet)
         {
-            return true;
+            if (ComparePreviousEvent(NewEvent, EventNumber, _entry))
+            {
+                return true;
+            }
         }
-        else
-        {
-            return false;
-        }
+        return false;
     }
 
     /// <summary>
@@ -140,16 +134,13 @@ public static class ScanEventInsertionService
     public static bool ValidateDuplicateScan(ScanEvent NewEvent, SerialNumber EventNumber, IEnumerable<string> DatabaseSet)
     {
         // compare the ScanEvent data to each of the DatabaseSet entries
-        List<string> Matches = DatabaseSet
-            .Where(x => Compare(NewEvent, EventNumber, x))
-            .ToList();
-        if (Matches.Count > 0)
+        foreach (string _entry in DatabaseSet)
         {
-            return false;
+            if (Compare(NewEvent, EventNumber, _entry))
+            {
+                return false;
+            }
         }
-        else
-        {
-            return true;
-        }
+        return true;
     }
 }
