@@ -4,17 +4,12 @@ using System.Text;
 
 namespace LotComWatcher.Models.Services;
 
-public class NetworkService
+public sealed class NetworkService
 {
     /// <summary>
     /// Sets the default communication port for sending messages to the Cognex Scanners.
     /// </summary>
     private const int DefaultPort = 23;
-
-    /// <summary>
-    /// A dedicated TcpClient.
-    /// </summary>
-    private readonly TcpClient _client;
 
     /// <summary>
     /// Pings an endpoint (generally a Scanner) for successful connection.
@@ -25,12 +20,12 @@ public class NetworkService
     /// <exception cref="OperationCanceledException"></exception>
     /// <exception cref="SocketException"></exception>
     /// <exception cref="SystemException"></exception>
-    private async Task<bool> Ping(IPEndPoint EndPoint)
+    private async Task<bool> Ping(TcpClient Client, IPEndPoint EndPoint)
     {
         // attempt to connect to the EndPoint
         try
         {
-            await _client.ConnectAsync(EndPoint);
+            await Client.ConnectAsync(EndPoint);
         }
         // there was an error while accessing the Socket on the endpoint
         catch (SocketException)
@@ -59,10 +54,9 @@ public class NetworkService
     /// <summary>
     /// Creates a NetworkService object that enables communication over TCP networks.
     /// </summary>
-    /// <param name="Client"></param>
-    public NetworkService(TcpClient Client)
+    public NetworkService()
     {
-        _client = Client;
+        
     }
 
     /// <summary>
@@ -75,15 +69,16 @@ public class NetworkService
     /// <exception cref="ArgumentException"></exception>
     public async Task<bool> SendMessage(IPAddress ScannerAddress, string Message)
     {
+        TcpClient MessageClient = new TcpClient();
         // initialize a TCP endoint that connects to the targeted scanner
         IPEndPoint EndPoint = new IPEndPoint(ScannerAddress, DefaultPort);
         // ping the connection to the scanner to ensure messaging will occur
-        if (!await Ping(EndPoint))
+        if (!await Ping(MessageClient, EndPoint))
         {
             throw new HttpRequestException(HttpRequestError.ConnectionError);
         }
         // create the message stream and encode the string Message onto the stream
-        NetworkStream MessageStream = _client.GetStream();
+        NetworkStream MessageStream = MessageClient.GetStream();
         byte[] EncodedMessage = Encoding.UTF8.GetBytes(Message);
         try
         {
@@ -94,6 +89,8 @@ public class NetworkService
             throw new ArgumentException($"Could not encode Message '{Message}' into a NetworkStream.");
         }
         // message was sent successfully
+        MessageStream.Close();
+        MessageClient.Close();
         return true;
     }
 
@@ -105,13 +102,18 @@ public class NetworkService
     /// <param name="LCDText"></param>
     /// <param name="Duration"></param>
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    /// <exception cref="HttpRequestException"></exception>
+    /// <exception cref="ArgumentException"></exception>
     public async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
         {
-            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
-            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"{LCDText}\"\r\n");
+            bool Sent = SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n").Result;
+            if (Sent)
+            {
+                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"{LCDText}\"\r\n");
+            }
         }
         catch (HttpRequestException)
         {
@@ -132,13 +134,18 @@ public class NetworkService
     /// <param name="Duration"></param>
     /// <param name="PreviousProcess"></param>
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    /// <exception cref="HttpRequestException"></exception>
+    /// <exception cref="ArgumentException"></exception>
     public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, string PreviousProcess)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
         {
-            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
-            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"This Label was not scanned by {PreviousProcess}. Basket is not valid for use.\"\r\n");
+            bool Sent = SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n").Result;
+            if (Sent)
+            {
+                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"This Label was not scanned by {PreviousProcess}. Basket is not valid for use.\"\r\n");
+            }
         }
         catch (HttpRequestException)
         {
@@ -158,13 +165,18 @@ public class NetworkService
     /// <param name="ScannerAddress"></param>
     /// <param name="Duration"></param>
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    /// <exception cref="HttpRequestException"></exception>
+    /// <exception cref="ArgumentException"></exception>
     public async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
         {
-            await SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
-            await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Duplicate Label scanned.\"\r\n");
+            bool Sent = SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n").Result;
+            if (Sent)
+            {
+                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Duplicate Label scanned.\"\r\n");
+            }
         }
         catch (HttpRequestException)
         {
