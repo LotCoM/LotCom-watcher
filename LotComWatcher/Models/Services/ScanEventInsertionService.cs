@@ -64,20 +64,42 @@ public static class ScanEventInsertionService
         return false;
     }
 
-    // Create method to validate previous process was completed
-    // validate JBK, a date within 2 months, and a model code
+    /// <summary>
+    /// Compares a new ScanEvent and an existing entry string for a Label match.
+    /// </summary>
+    /// <param name="Event"></param>
+    /// <param name="EventNumber"></param>
+    /// <param name="Entry"></param>
+    /// <returns></returns>
     private static bool ComparePreviousEvent(ScanEvent Event, SerialNumber EventNumber, string Entry)
     {
         // get entry information out of CSV
         string[] SplitEntry = Entry.Split(",");
-        string EntryPartNumber = SplitEntry[3];
+        // compare the Event and Entry Serial Numbers
         string EntrySerialNumber = SplitEntry[6];
-        string EntryDate = SplitEntry[^3];
-        string EntryModelNumber = EntryPartNumber.Split("-")[1];
-        // compare the Serial Numbers, Model Numbers, and Dates of the existing Entry and the new Event
-        bool SerialNumberOK = EventNumber.GetFormattedValue().Equals(EntrySerialNumber);
+        bool SerialNumberOK;
+        if
+        (
+            Event.Label.Process.Type == ProcessType.Machining &&
+            Event.Label.Process.PreviousProcesses[0]!.Equals("4470-DC-Deburr")
+        )
+        {
+            // if the new Event is a Scan of Label from a machining Process, the serial number will have changed
+            // need to check if the Event's Deburr JBK matches the events serial number
+            SerialNumberOK = Event.Label.VariableFields.DeburrJBKNumber!.Formatted.Equals(EntrySerialNumber);
+        }
+        else
+        {
+            // the Serial Numbers must match as the Serial Number change only occurs between Deburr/Machining processes
+            SerialNumberOK = EventNumber.GetFormattedValue().Equals(EntrySerialNumber);
+        }
+        // compare the Event and Entry Model Numbers
+        string EntryModelNumber = SplitEntry[3].Split("-")[1];
         bool ModelNumberOK = Event.Label.Part.ModelNumber.Code.Equals(EntryModelNumber);
+        // compare the Event and Entry Dates within a 60 day range
+        string EntryDate = SplitEntry[^3];
         bool DateRangeOK = CompareDatesAsRange(Event.Label.ProductionDate, EntryDate, 60);
+        // confirm that each of the three conditions are OK
         if (SerialNumberOK && ModelNumberOK && DateRangeOK)
         {
             return true;
