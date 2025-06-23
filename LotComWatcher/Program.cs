@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using LotComWatcher;
 using LotComWatcher.Models.Services;
 
@@ -9,6 +10,8 @@ builder.Services.AddWindowsService(options =>
 });
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddSingleton<ReaderService>();
+builder.Services.AddSingleton<NetworkService>();
+builder.Services.AddSingleton<FailedScanService>();
 
 var host = builder.Build();
 host.Run();

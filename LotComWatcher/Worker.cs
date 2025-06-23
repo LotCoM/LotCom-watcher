@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
@@ -19,14 +18,26 @@ public class Worker : BackgroundService
     private readonly ReaderService Reader;
 
     /// <summary>
+    /// Failed Scan Service that provides uniform logging of Scan Event processing steps that failed.
+    /// </summary>
+    private readonly FailedScanService FailLogger;
+
+    /// <summary>
+    /// Network service that provides uniform Scanner messaging capabilities.
+    /// </summary>
+    private readonly NetworkService Network;
+
+    /// <summary>
     /// Creates a Service Worker that performs the Service's main event/work loop.
     /// </summary>
     /// <param name="Logger"></param>
     /// <param name="Reader"></param>
-    public Worker(ILogger<Worker> Logger, ReaderService Reader)
+    public Worker(ILogger<Worker> Logger, ReaderService Reader, FailedScanService FailLogger, NetworkService Network)
     {
         this.Logger = Logger;
         this.Reader = Reader;
+        this.FailLogger = FailLogger;
+        this.Network = Network;
     }
 
     /// <summary>
@@ -48,7 +59,7 @@ public class Worker : BackgroundService
             }
             else
             {
-                await FailedScanService.LogFailedScanEvent(_raw, Parse.Exception);
+                await FailLogger.LogFailedScanEvent(_raw, Parse.Exception);
             }
         }
         return ParseTasks;
@@ -93,14 +104,54 @@ public class Worker : BackgroundService
                     {
                         // capture the message from the Router on each ScanEvent and Log a respective string
                         InsertionMessage Message = EventRouter.Route(_event);
+                        // no scan occurred at the previous process
                         if (Message == InsertionMessage.MissingPrevious)
                         {
+                            // log to the console and send a message to the Scanner
                             Logger.LogWarning("Missing Previous Process");
+                            try
+                            {
+                                await Network.SendMissingPreviousScanError
+                                (
+                                    ScannerAddress: _event.Address,
+                                    Duration: 15,
+                                    PreviousProcess: _event.Label.Process.PreviousProcesses[0]!
+                                );
+                            }
+                            // the message failed to send
+                            catch (HttpRequestException)
+                            {
+                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
+                            }
+                            catch (ArgumentException)
+                            {
+                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                            }
                         }
+                        // the Label was already scanned at this Process
                         else if (Message == InsertionMessage.DuplicateScan)
                         {
+                            // log to the console and send a message to the Scanner
                             Logger.LogWarning("Duplicate Scan");
+                            try
+                            {
+                                await Network.SendDuplicateScanError
+                                (
+                                    ScannerAddress: _event.Address,
+                                    Duration: 15
+                                );
+                            }
+                            // the message failed to send
+                            catch (HttpRequestException)
+                            {
+                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
+                            }
+                            catch (ArgumentException)
+                            {
+                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                            }
                         }
+                        // the Scan was valid
                         else
                         {
                             Logger.LogInformation("Valid Entry");
