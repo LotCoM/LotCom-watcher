@@ -87,7 +87,7 @@ public static class EventRouter
         // elicit the Serial Number from the new Scan Event
         SerialNumber EventNumber = GetSerialNumber(ScanEvent);
         // check for a match in the Previous Process scans Datatable (only if configured for the ScanEvent's Process)
-        string? PreviousProcess = ScanEvent.Label.Process.PreviousProcesses[0];
+        string? PreviousProcess = ScanEvent.Label.Process.PreviousProcesses![0];
         if (PreviousProcess is not null && !PreviousProcess.Equals(""))
         {
             if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))

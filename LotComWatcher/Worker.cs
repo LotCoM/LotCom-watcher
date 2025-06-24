@@ -115,7 +115,7 @@ public class Worker : BackgroundService
                                 (
                                     ScannerAddress: _event.Address,
                                     Duration: 15,
-                                    PreviousProcess: _event.Label.Process.PreviousProcesses[0]!
+                                    PreviousProcess: _event.Label.Process.PreviousProcesses![0]
                                 );
                             }
                             // the message failed to send

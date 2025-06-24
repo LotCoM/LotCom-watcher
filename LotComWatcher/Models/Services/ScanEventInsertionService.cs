@@ -1,4 +1,5 @@
 using System.Globalization;
+using LotCom.Enums;
 using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
@@ -81,7 +82,7 @@ public static class ScanEventInsertionService
         if
         (
             Event.Label.Process.Type == ProcessType.Machining &&
-            Event.Label.Process.PreviousProcesses[0]!.Equals("4470-DC-Deburr")
+            Event.Label.Process.PreviousProcesses![0].Equals("4470-DC-Deburr")
         )
         {
             // if the new Event is a Scan of Label from a machining Process, the serial number will have changed
@@ -117,14 +118,14 @@ public static class ScanEventInsertionService
         try
         {
             // Creating TablePath that points us to the correct folder which is the process name. 
-            TablePath = $"{ScanFolder}\\{NewEvent.Label.Process.PreviousProcesses[0]}.txt";
+            TablePath = $"{ScanFolder}\\{NewEvent.Label.Process.PreviousProcesses![0]}.txt";
             // Creating an array that is reading all the lines through the TablePath file.
             DatabaseSet = File.ReadAllLines(TablePath);
         }
         // the file could not be found by the Router
         catch (FileNotFoundException)
         {
-            throw new ProcessNameException($"Could not find a table for the Process '{NewEvent.Label.Process.PreviousProcesses[0]}'.");
+            throw new ProcessNameException($"Could not find a table for the Process '{NewEvent.Label.Process.PreviousProcesses![0]}'.");
         }
         // there was another issue accessing the file
         catch (SystemException _ex)
