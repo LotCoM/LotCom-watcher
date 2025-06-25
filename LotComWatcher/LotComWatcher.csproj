@@ -2,10 +2,16 @@
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-LotComWatcher-4a5aeada-aa7e-498e-a4fe-1c0c65d8f26b</UserSecretsId>
     <LangVersion>preview</LangVersion>
+		<!-- Restore NuGet packages with packages.lock.json file -->
+		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Versions -->
+		<ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
   </PropertyGroup>
 
   <PropertyGroup>
