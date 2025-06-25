@@ -9,6 +9,9 @@
     <LangVersion>preview</LangVersion>
 		<!-- Restore NuGet packages with packages.lock.json file -->
 		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Versions -->
+		<ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+		<ApplicationVersion>1</ApplicationVersion>
   </PropertyGroup>
 
   <PropertyGroup>
