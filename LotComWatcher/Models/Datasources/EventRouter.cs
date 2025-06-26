@@ -54,6 +54,36 @@ public static class EventRouter
     }
 
     /// <summary>
+    /// Checks for and returns 
+    /// </summary>
+    /// <param name="Event"></param>
+    /// <returns></returns>
+    private static string? CheckForPreviousProcess(ScanEvent Event)
+    {
+        // extract the PreviousProcesses property for runtime performance
+        List<string>? PreviousProcesses = Event.Label.Process.PreviousProcesses;
+        string? PreviousProcess;
+        // confirm that the PreviousProcess is not null
+        if (PreviousProcesses is not null && PreviousProcesses.Count > 0)
+        {
+            PreviousProcess = PreviousProcesses[0];
+        }
+        else
+        {
+            PreviousProcess = null;
+        }
+        // confirm that the first defined Process is not null or empty
+        if (PreviousProcess is not null && !PreviousProcess.Equals(""))
+        {
+            return PreviousProcess;
+        }
+        else
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Attempts to route and insert ScanEvent into its appropriate Process datatable.
     /// </summary>
     /// <param name="ScanEvent"></param>
@@ -86,14 +116,12 @@ public static class EventRouter
         }
         // elicit the Serial Number from the new Scan Event
         SerialNumber EventNumber = GetSerialNumber(ScanEvent);
-        // check for a match in the Previous Process scans Datatable (only if configured for the ScanEvent's Process)
-        string? PreviousProcess = ScanEvent.Label.Process.PreviousProcesses![0];
-        if (PreviousProcess is not null && !PreviousProcess.Equals(""))
+        // check for a match in the Previous Process scans Datatable
+        // only if Previous Process is configured for the ScanEvent's Process
+        string? PreviousProcess = CheckForPreviousProcess(ScanEvent);
+        if (PreviousProcess is not null && !ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
         {
-            if (!ScanEventInsertionService.ValidatePreviousProcess(ScanEvent, EventNumber))
-            {
-                return InsertionMessage.MissingPrevious;
-            }
+            return InsertionMessage.MissingPrevious;
         }
         // Adding the most recent entry to the bottom of our file.
         if (ScanEventInsertionService.ValidateDuplicateScan(ScanEvent, EventNumber, DatabaseSet))
