@@ -1,3 +1,5 @@
+using LotCom.Exceptions;
+
 namespace LotComWatcher.Models.Exceptions;
 
 /// <summary>

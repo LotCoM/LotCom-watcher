@@ -1,8 +1,8 @@
 using System.Globalization;
 using LotCom.Enums;
+using LotCom.Exceptions;
 using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
-using LotComWatcher.Models.Exceptions;
 
 namespace LotComWatcher.Models.Services;
 
