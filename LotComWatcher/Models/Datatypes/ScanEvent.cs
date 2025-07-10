@@ -17,11 +17,12 @@ public sealed class ScanEvent
     /// </summary>
     /// <param name="Process"></param>
     /// <param name="Part"></param>
-    /// <param name="Quantity"></param>
     /// <param name="VariableFields"></param>
     /// <param name="ProductionDate"></param>
-    /// <param name="ProductionShift"></param>
-    public class LabelInfo(Process Process, Part Part, Quantity Quantity, VariableFieldSet VariableFields, DateTime ProductionDate, Shift ProductionShift, Operator ProductionOperator)
+    /// <param name="PrimaryDataSet"></param>
+    /// <param name="FirstPartialDataSet"></param>
+    /// <param name="SecondPartialDataSet"></param>
+    public class LabelInfo(Process Process, Part Part, VariableFieldSet VariableFields, DateTime ProductionDate, PartialDataSet PrimaryDataSet, PartialDataSet? FirstPartialDataSet = null, PartialDataSet? SecondPartialDataSet = null)
     {
         /// <summary>
         /// The Process that printed the Label.
@@ -34,11 +35,6 @@ public sealed class ScanEvent
         public Part Part = Part;
 
         /// <summary>
-        /// The number of items in the Basket that the Label was applied to.
-        /// </summary>
-        public Quantity Quantity = Quantity;
-
-        /// <summary>
         /// The variably-required fields of manufacturing data assigned to the Basket that the Label was applied to.
         /// </summary>
         public VariableFieldSet VariableFields = VariableFields;
@@ -49,15 +45,19 @@ public sealed class ScanEvent
         public DateTime ProductionDate = ProductionDate;
 
         /// <summary>
-        /// The Shift on which the Label was produced/printed.
+        /// A PartialDataSet containing the initial Quantity, Shift, and Operator for the Label. 
         /// </summary>
-        public Shift ProductionShift = ProductionShift;
+        public PartialDataSet PrimaryDataSet = PrimaryDataSet;
 
         /// <summary>
-        /// The Operator by which the Label was produced/printed.
+        /// A PartialDataSet containing the first additional Quantity, Shift, and Operator for the Label. 
         /// </summary>
-        public Operator ProductionOperator = ProductionOperator;
+        public PartialDataSet? FirstPartialDataSet = FirstPartialDataSet;
 
+        /// <summary>
+        /// A PartialDataSet containing the second additional Quantity, Shift, and Operator for the Label. 
+        /// </summary>
+        public PartialDataSet? SecondPartialDataSet = SecondPartialDataSet;
     }
 
     /// <summary>
@@ -82,12 +82,14 @@ public sealed class ScanEvent
     /// <param name="Address"></param>
     /// <param name="Process"></param>
     /// <param name="Part"></param>
-    /// <param name="Quantity"></param>
     /// <param name="VariableFields"></param>
     /// <param name="ProductionDate"></param>
+    /// <param name="Quantity"></param>
     /// <param name="ProductionShift"></param>
     /// <param name="ProductionOperator"></param>
-    public ScanEvent(DateTime Date, IPAddress Address, Process Process, Part Part, Quantity Quantity, VariableFieldSet VariableFields, DateTime ProductionDate, Shift ProductionShift, Operator ProductionOperator)
+    /// <param name="FirstPartial"></param>
+    /// <param name="SecondPartial"></param>
+    public ScanEvent(DateTime Date, IPAddress Address, Process Process, Part Part, VariableFieldSet VariableFields, DateTime ProductionDate, PartialDataSet PrimaryDataSet, PartialDataSet? FirstPartial = null, PartialDataSet? SecondPartial = null)
     {
         this.Date = Date;
         this.Address = Address;
@@ -95,11 +97,11 @@ public sealed class ScanEvent
         (
             Process,
             Part,
-            Quantity,
             VariableFields,
             ProductionDate,
-            ProductionShift,
-            ProductionOperator
+            PrimaryDataSet,
+            FirstPartial,
+            SecondPartial
         );
     }
 
@@ -214,6 +216,119 @@ public sealed class ScanEvent
                 throw new ArgumentException($"Failed to create a Heat Number from the required value {SplitLine[6 + NextValue]}.");
             }
         }
+        // parse Quantity, Shift, Operator sets
+        PartialDataSet PrimaryDataSet;
+        Quantity PrimaryQuantity;
+        Shift PrimaryShift;
+        Operator PrimaryOperator;
+        PartialDataSet? FirstPartialDataSet = null;
+        Quantity FirstPartialQuantity;
+        Shift FirstPartialShift;
+        Operator FirstPartialOperator;
+        PartialDataSet? SecondPartialDataSet = null;
+        Quantity SecondPartialQuantity;
+        Shift SecondPartialShift;
+        Operator SecondPartialOperator;
+        // colon in quantity field indicates the existence of a split basket in the event
+        if (SplitLine[5].Contains(':'))
+        {
+            // split quantity field and save the first, second values
+            List<string> SplitQuantity = SplitLine[5].Split(":").ToList();
+            try
+            {
+                PrimaryQuantity = new Quantity(int.Parse(SplitQuantity[0]));
+                FirstPartialQuantity = new Quantity(int.Parse(SplitQuantity[1]));
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse integer Quantities from '{SplitLine[5]}'.");
+            }
+            // split shift field and save the first, second values
+            List<string> SplitShift = SplitLine[^2].Split(":").ToList();
+            try
+            {
+                PrimaryShift = ShiftExtensions.FromString(SplitShift[0]);
+                FirstPartialShift = ShiftExtensions.FromString(SplitShift[1]);
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse Shifts from '{SplitLine[^2]}'.");
+            }
+            // split operator field and save the first, second values
+            List<string> SplitOperator = SplitLine[^1].Split(":").ToList();
+            try
+            {
+                PrimaryOperator = new Operator(SplitOperator[0]);
+                FirstPartialOperator = new Operator(SplitOperator[1]);
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse string Operators from '{SplitLine[^1]}'.");
+            }
+            // construct and save the first partial DataSet object
+            FirstPartialDataSet = new PartialDataSet(FirstPartialQuantity, FirstPartialShift, FirstPartialOperator);
+            // length of three in the split quantity field indicates two PartialDataSets
+            if (SplitQuantity.Count == 3)
+            {
+                // retrieve the third set of values and construct the Second PartialDataSet object
+                try
+                {
+                    SecondPartialQuantity = new Quantity(int.Parse(SplitQuantity[2]));
+                }
+                catch (FormatException)
+                {
+                    throw new ArgumentException($"Could not parse int Quantity from '{SplitQuantity[2]}'.");
+                }
+                try
+                {
+                    SecondPartialShift = ShiftExtensions.FromString(SplitShift[2]);
+                }
+                catch (FormatException)
+                {
+                    throw new ArgumentException($"Could not parse Shift from '{SplitShift[2]}'.");
+                }
+                try
+                {
+                    SecondPartialOperator = new Operator(SplitOperator[2]);
+                }
+                catch (FormatException)
+                {
+                    throw new ArgumentException($"Could not parse string Operator from '{SplitOperator[2]}'.");
+                }
+                SecondPartialDataSet = new PartialDataSet(SecondPartialQuantity, SecondPartialShift, SecondPartialOperator);
+            }
+        }
+        // there is no PartialDataSet information
+        else
+        {
+            // retrieve values directly from the CSV fields
+            try
+            {
+                PrimaryQuantity = new Quantity(int.Parse(SplitLine[5]));
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse int Quantity from '{SplitLine[5]}'.");
+            }
+            try
+            {
+                PrimaryShift = ShiftExtensions.FromString(SplitLine[^2]);
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse Shift from '{SplitLine[^2]}'.");
+            }
+            try
+            {
+                PrimaryOperator = new Operator(SplitLine[^1]);
+            }
+            catch (FormatException)
+            {
+                throw new ArgumentException($"Could not parse string Operator from '{SplitLine[^1]}'.");
+            }
+        }
+        // create and save the PrimaryDataSet
+        PrimaryDataSet = new PartialDataSet(PrimaryQuantity, PrimaryShift, PrimaryOperator);
         // create a new ScanEvent from the retrieved Process, Part, VariableFields, and other information
         try
         {
@@ -223,11 +338,11 @@ public sealed class ScanEvent
                 Address: IPAddress.Parse(SplitLine[1]),
                 Process: Process,
                 Part: Part,
-                Quantity: new Quantity(int.Parse(SplitLine[5])),
                 VariableFields: VariableFields,
                 ProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-                ProductionShift: ShiftExtensions.FromString(SplitLine[^2]),
-                ProductionOperator: new Operator(SplitLine[^1])
+                PrimaryDataSet: PrimaryDataSet,
+                FirstPartial: FirstPartialDataSet,
+                SecondPartial: SecondPartialDataSet
             );
         }
         // there was a null argument passed to one of the Parses
@@ -253,7 +368,7 @@ public sealed class ScanEvent
     }
     public string ToCSV()
     {
-        string CSVLine = $"{Label.Process},{new Timestamp(Date).Stamp},{Address},{Label.Part.ToCSV()},{Label.Quantity},{Label.VariableFields.ToCSV()},{new Timestamp(Label.ProductionDate).Stamp},{ShiftExtensions.ToString(Label.ProductionShift)},{Label.ProductionOperator}";
+        string CSVLine = $"{Label.Process},{new Timestamp(Date).Stamp},{Address},{Label.Part.ToCSV()},{Label.PrimaryDataSet.Quantity},{Label.VariableFields.ToCSV()},{new Timestamp(Label.ProductionDate).Stamp},{ShiftExtensions.ToString(Label.PrimaryDataSet.Shift)},{Label.PrimaryDataSet.Operator}";
 
         return CSVLine;
     }
