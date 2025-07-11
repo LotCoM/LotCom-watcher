@@ -18,7 +18,7 @@ public class Worker : BackgroundService
     private readonly ReaderService Reader;
 
     /// <summary>
-    /// Failed Scan Service that provides uniform logging of Scan Event processing steps that failed.
+    /// Failed Scan Service that provides uniform logging of Scan Output processing steps that failed.
     /// </summary>
     private readonly FailedScanService FailLogger;
 
@@ -44,22 +44,22 @@ public class Worker : BackgroundService
     /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
     /// Logs the failed Tasks in the failed scans log file.
     /// </summary>
-    /// <param name="RawScans"></param>
+    /// <param name="ScanOutputs"></param>
     /// <returns></returns>
-    private async Task<List<Task<ScanEvent>>> ClearFaultingParses(List<string> RawScans)
+    private async Task<List<Task<ScanOutput>>> ClearFaultingParses(List<string> ScanOutputs)
     {
-        List<Task<ScanEvent>> ParseTasks = [];
+        List<Task<ScanOutput>> ParseTasks = [];
         // check for faulting parses, remove them from the list, and log them
-        foreach (string _raw in RawScans)
+        foreach (string _raw in ScanOutputs)
         {
-            Task<ScanEvent> Parse = ScanEvent.ParseCSV(_raw);
+            Task<ScanOutput> Parse = ScanOutput.ParseCSV(_raw);
             if (!Parse.IsFaulted)
             {
                 ParseTasks.Add(Parse);
             }
             else
             {
-                await FailLogger.LogFailedScanEvent(_raw, Parse.Exception);
+                await FailLogger.LogFailedScan(_raw, Parse.Exception);
             }
         }
         return ParseTasks;
@@ -78,10 +78,10 @@ public class Worker : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 // read the Scan Output file
-                List<string> Results = [];
+                List<string> ScanOutputs = [];
                 try
                 {
-                    Results = await Reader.Read();
+                    ScanOutputs = await Reader.Read();
                 }
                 catch (OperationCanceledException _ex)
                 {
@@ -89,33 +89,33 @@ public class Worker : BackgroundService
                     Logger.LogError(_ex, "{Message}", _ex.Message);
                     Environment.Exit(1);
                 }
-                // asynchronously parse each Raw Scan into a ScanEvent object
-                List<Task<ScanEvent>> ParseTasks = await ClearFaultingParses(Results);
-                ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
+                // asynchronously parse each Raw Scan into a ScanOutput object
+                List<Task<ScanOutput>> ParseTasks = await ClearFaultingParses(ScanOutputs);
+                ScanOutput[] ParseResults = await Task.WhenAll(ParseTasks);
                 // confirm that the parsing did not fail and/or return null
                 if (ParseResults is null)
                 {
-                    Logger.LogInformation("No new Scan Events.");
+                    Logger.LogInformation("No new Scans.");
                 }
                 else
                 {
-                    // Route ScanEvents
-                    foreach (ScanEvent _event in ParseResults)
+                    // create scans in Database
+                    foreach (ScanOutput _output in ParseResults)
                     {
-                        // capture the message from the Router on each ScanEvent and Log a respective string
-                        InsertionMessage Message = EventRouter.Route(_event);
+                        // capture the message from the Manager on each ScanOutput and Log a respective string
+                        InsertionMessage Message = await DatabaseManager.CreateScan(_output);
                         // no scan occurred at the previous process
                         if (Message == InsertionMessage.MissingPrevious)
                         {
                             // log to the console and send a message to the Scanner
-                            Logger.LogWarning("Missing Previous Process");
+                            Logger.LogWarning("Missing Scan in previous Process.");
                             try
                             {
                                 await Network.SendMissingPreviousScanError
                                 (
-                                    ScannerAddress: _event.Address,
+                                    ScannerAddress: _output.Address,
                                     Duration: 15,
-                                    PreviousProcess: _event.Label.Process.PreviousProcesses!
+                                    PreviousProcess: _output.Process.PreviousProcesses!
                                 );
                             }
                             // the message failed to send
@@ -132,12 +132,12 @@ public class Worker : BackgroundService
                         else if (Message == InsertionMessage.DuplicateScan)
                         {
                             // log to the console and send a message to the Scanner
-                            Logger.LogWarning("Duplicate Scan");
+                            Logger.LogWarning("Duplicate Scan.");
                             try
                             {
                                 await Network.SendDuplicateScanError
                                 (
-                                    ScannerAddress: _event.Address,
+                                    ScannerAddress: _output.Address,
                                     Duration: 15
                                 );
                             }
@@ -154,7 +154,7 @@ public class Worker : BackgroundService
                         // the Scan was valid
                         else
                         {
-                            Logger.LogInformation("Valid Entry");
+                            Logger.LogInformation("Created new Scan entry.");
                         }
                     }
                 }
