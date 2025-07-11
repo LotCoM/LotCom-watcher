@@ -14,7 +14,7 @@ public static class DatabaseManager
     /// <summary>
     /// URI for the "scans" section of the Database, where each Process' scan datatable lives.
     /// </summary>
-    private static readonly string ScanFolder = "\\\\144.133.122.1\\Lot Control Management\\Database\\data_tables\\scans";
+    private const string ScanFolder = "\\\\144.133.122.1\\Lot Control Management\\Database\\data_tables\\scans";
 
     /// <summary>
     /// Attempts to route and create (insert) New in its appropriate Process datatable.
