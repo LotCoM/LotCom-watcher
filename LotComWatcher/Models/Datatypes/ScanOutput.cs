@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using LotCom.Database;
+using LotCom.Enums;
 using LotCom.Exceptions;
 using LotCom.Types;
 
@@ -181,6 +182,38 @@ public sealed class ScanOutput(DateTime ScanDate, IPAddress Address, Process Pro
             ProductionDate,
             FirstPartialDataSet,
             SecondPartialDataSet
+        );
+    }
+
+    /// <summary>
+    /// Uses the ScanOutput's properties to construct and return a SerialNumber object.
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="FormatException"></exception>
+    public SerialNumber GetSerialNumber()
+    {
+        int Literal;
+        // use the JBK number
+        if (Process.Serialization == SerializationMode.JBK || Process.PassThroughType == PassThroughType.JBK)
+        {
+            Literal = VariableFields.JBKNumber!.Literal;
+        }
+        // use the Lot number
+        else if (Process.Serialization == SerializationMode.Lot || Process.PassThroughType == PassThroughType.Lot)
+        {
+            Literal = VariableFields.LotNumber!.Literal;
+        }
+        // Process' Serialization is mis-configured
+        else
+        {
+            throw new FormatException("There was a configuration issue with the Process. No Serialization is available.");
+        }
+        // construct and return a SerialNumber
+        return new SerialNumber
+        (
+            Process.Serialization,
+            Part,
+            Literal
         );
     }
 }
