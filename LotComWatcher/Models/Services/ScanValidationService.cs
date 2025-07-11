@@ -62,7 +62,7 @@ public static class ScanValidationService
         (
             NewSerial.GetFormattedValue().Equals(ExistingSerial.GetFormattedValue()) &&
             NewSerial.Part.PartNumber.Equals(ExistingSerial.Part.PartNumber) &&
-            New.ProductionDate.Equals(Existing.ScanTime)
+            New.ProductionDate.Equals(Existing.ProductionDate)
         )
         {
             return true;
