@@ -1,4 +1,4 @@
-using System.Globalization;
+using LotCom.Database;
 using LotCom.Enums;
 using LotCom.Exceptions;
 using LotCom.Types;
@@ -7,9 +7,9 @@ using LotComWatcher.Models.Datatypes;
 namespace LotComWatcher.Models.Services;
 
 /// <summary>
-/// Provides insertion validation methods for ScanEvent objects.
+/// Provides insertion validation methods for ScanOutput objects.
 /// </summary>
-public static class ScanEventInsertionService
+public static class ScanValidationService
 {
     /// <summary>
     /// URI for the "scans" section of the Database, where each Process' scan datatable lives.
@@ -17,17 +17,16 @@ public static class ScanEventInsertionService
     private static readonly string ScanFolder = "\\\\144.133.122.1\\Lot Control Management\\Database\\data_tables\\scans";
 
     /// <summary>
-    /// Compares two Dates (one from a ScanEvent and one as a raw string from an Entry) and returns whether the ScanEvent occurred within the passed RangeInDays after RawEntryDate.
+    /// Compares two Dates (one from new ScanOutput and one from existing Scan). 
+    /// Returns whether the ExistingDate is within the passed RangeInDays after NewDate.
     /// </summary>
-    /// <param name="EventDate"></param>
-    /// <param name="RawEntryDate"></param>
+    /// <param name="NewDate"></param>
+    /// <param name="ExistingDate"></param>
     /// <param name="RangeInDays"></param>
     /// <returns></returns>
-    private static bool CompareDatesAsRange(DateTime EventDate, string RawEntryDate, int RangeInDays)
+    private static bool CompareDatesAsRange(DateTime NewDate, DateTime ExistingDate, int RangeInDays)
     {
-        // parse EventDate into a DateTime object
-        DateTime EntryDate = DateTime.ParseExact(RawEntryDate, "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture);
-        TimeSpan ElapsedTime = EventDate.Subtract(EntryDate);
+        TimeSpan ElapsedTime = NewDate.Subtract(ExistingDate);
         if (ElapsedTime.Days < 0 || ElapsedTime.Days > RangeInDays)
         {
             return false;
@@ -39,24 +38,31 @@ public static class ScanEventInsertionService
     }
 
     /// <summary>
-    /// Compares a ScanEvent object's serial data to a raw Database Entry's serial data.
+    /// Compares serial data of a ScanOutput object and an existing Scan object.
     /// </summary>
-    /// <param name="Event"></param>
-    /// <param name="Entry"></param>
+    /// <param name="New"></param>
+    /// <param name="Existing"></param>
     /// <returns></returns>
-    private static bool Compare(ScanEvent Event, SerialNumber EventNumber, string Entry)
+    private static bool CompareAsSameProcess(ScanOutput New, Scan Existing)
     {
-        // split Entry to its individual fields and compare to Event's Serial data
-        string[] SplitEntry = Entry.Split(",");
-        string EntryPartNumber = SplitEntry[3];
-        string EntrySerialNumber = SplitEntry[6];
-        string EntryDate = SplitEntry[^3];
+        // create SerialNumber objects from the New and Existing objects
+        SerialNumber NewSerial;
+        SerialNumber ExistingSerial;
+        try
+        {
+            NewSerial = New.GetSerialNumber();
+            ExistingSerial = Existing.GetSerialNumber();
+        }
+        catch (FormatException)
+        {
+            throw new FormatException("Could not create a SerialNumber for the New and/or Existing Scan.");
+        }
         // compare the SerialNumbers and Dates
         if
         (
-            EventNumber.GetFormattedValue().Equals(EntrySerialNumber) &&
-            EventNumber.Part.PartNumber.Equals(EntryPartNumber) &&
-            new Timestamp(Event.Label.ProductionDate).Stamp.Equals(EntryDate)
+            NewSerial.GetFormattedValue().Equals(ExistingSerial.GetFormattedValue()) &&
+            NewSerial.Part.PartNumber.Equals(ExistingSerial.Part.PartNumber) &&
+            New.ProductionDate.Equals(Existing.ScanTime)
         )
         {
             return true;
@@ -66,40 +72,46 @@ public static class ScanEventInsertionService
     }
 
     /// <summary>
-    /// Compares a new ScanEvent and an existing entry string for a Label match.
+    /// Compares a new ScanOutput and an existing Scan for a Label match.
     /// </summary>
-    /// <param name="Event"></param>
-    /// <param name="EventNumber"></param>
-    /// <param name="Entry"></param>
+    /// <param name="New"></param>
+    /// <param name="Existing"></param>
     /// <returns></returns>
-    private static bool ComparePreviousEvent(ScanEvent Event, SerialNumber EventNumber, string Entry)
+    private static bool CompareAsPreviousProcess(ScanOutput New, Scan Existing)
     {
-        // get entry information out of CSV
-        string[] SplitEntry = Entry.Split(",");
-        // compare the Event and Entry Serial Numbers
-        string EntrySerialNumber = SplitEntry[6];
+        // create SerialNumber objects from the New and Existing objects
+        string NewSerial;
+        string ExistingSerial;
+        try
+        {
+            NewSerial = New.GetSerialNumber().GetFormattedValue();
+            ExistingSerial = Existing.GetSerialNumber().GetFormattedValue();
+        }
+        catch (FormatException)
+        {
+            throw new FormatException("Could not create a SerialNumber for the New and/or Existing Scan.");
+        }
+        // compare SerialNumbers for a match
         bool SerialNumberOK;
         if
         (
-            Event.Label.Process.Type == ProcessType.Machining &&
-            Event.Label.Process.PreviousProcesses![0].Equals("4470-DC-Deburr")
+            New.Process.Type == ProcessType.Machining &&
+            New.Process.PreviousProcesses![0].Equals("4470-DC-Deburr")
         )
         {
-            // if the new Event is a Scan of Label from a machining Process, the serial number will have changed
-            // need to check if the Event's Deburr JBK matches the events serial number
-            SerialNumberOK = Event.Label.VariableFields.DeburrJBKNumber!.Formatted.Equals(EntrySerialNumber);
+            // if New is a Scan of Label from a machining Process, the serial number has changed
+            // need to check if New's DeburrJBKNumber matches Existing's serial number
+            SerialNumberOK = New.VariableFields.DeburrJBKNumber!.Formatted.Equals(ExistingSerial);
         }
         else
         {
-            // the Serial Numbers must match as the Serial Number change only occurs between Deburr/Machining processes
-            SerialNumberOK = EventNumber.GetFormattedValue().Equals(EntrySerialNumber);
+            // serials must match; change only occurs from Deburr -> Machining processes
+            SerialNumberOK = NewSerial.Equals(ExistingSerial);
         }
-        // compare the Event and Entry Model Numbers
-        string EntryModelNumber = SplitEntry[3].Split("-")[1];
-        bool ModelNumberOK = Event.Label.Part.ModelNumber.Code.Equals(EntryModelNumber);
-        // compare the Event and Entry Dates within a 60 day range
-        string EntryDate = SplitEntry[^3];
-        bool DateRangeOK = CompareDatesAsRange(Event.Label.ProductionDate, EntryDate, 60);
+        // compare the New and Existing Model Numbers
+        bool ModelNumberOK = New.Part.ModelNumber.Code.Equals(Existing.Part.ModelNumber.Code);
+        // compare the New and Existing Dates within a 60 day range
+        bool DateRangeOK = CompareDatesAsRange(New.ProductionDate, Existing.ProductionDate, 60);
         // confirm that each of the three conditions are OK
         if (SerialNumberOK && ModelNumberOK && DateRangeOK)
         {
@@ -109,8 +121,14 @@ public static class ScanEventInsertionService
         return false;
     }
 
-    // New method to validate that a matching scan entry is in the previous process
-    public static bool ValidatePreviousProcess(ScanEvent NewEvent, SerialNumber EventNumber)
+    /// <summary>
+    /// Validates that a matching Scan exists in the previous Process' database table.
+    /// </summary>
+    /// <param name="New"></param>
+    /// <returns></returns>
+    /// <exception cref="ProcessNameException"></exception>
+    /// <exception cref="DatabaseException"></exception>
+    public static async Task<bool> ValidatePreviousProcess(ScanOutput New)
     {
         // prepare the Table and DatabaseSet
         string TablePath = "";
@@ -118,14 +136,14 @@ public static class ScanEventInsertionService
         try
         {
             // Creating TablePath that points us to the correct folder which is the process name. 
-            TablePath = $"{ScanFolder}\\{NewEvent.Label.Process.PreviousProcesses![0]}.txt";
+            TablePath = $"{ScanFolder}\\{New.Process.PreviousProcesses![0]}.txt";
             // Creating an array that is reading all the lines through the TablePath file.
             DatabaseSet = File.ReadAllLines(TablePath);
         }
         // the file could not be found by the Router
         catch (FileNotFoundException)
         {
-            throw new ProcessNameException($"Could not find a table for the Process '{NewEvent.Label.Process.PreviousProcesses![0]}'.");
+            throw new ProcessNameException($"Could not find a table for the Process '{New.Process.PreviousProcesses![0]}'.");
         }
         // there was another issue accessing the file
         catch (SystemException _ex)
@@ -136,11 +154,12 @@ public static class ScanEventInsertionService
                 InnerException: _ex
             );
         }
-        // elicit the Serial Number from the new Scan Event
-        // compare the ScanEvent data to each of the DatabaseSet entries
+        // compare the New data to each of the DatabaseSet entries
         foreach (string _entry in DatabaseSet)
         {
-            if (ComparePreviousEvent(NewEvent, EventNumber, _entry))
+            // convert the existing entry into a Scan object and compare the two
+            Scan _scan = await Scan.Parse(_entry);
+            if (CompareAsPreviousProcess(New, _scan))
             {
                 return true;
             }
@@ -149,17 +168,19 @@ public static class ScanEventInsertionService
     }
 
     /// <summary>
-    /// Checks if NewEvent object is unique within the passed set of Database entries. 
+    /// Checks if New is unique within the passed set of Database entries. 
     /// </summary>
-    /// <param name="NewEvent"></param>
+    /// <param name="New"></param>
     /// <param name="DatabaseSet"></param>
     /// <returns></returns>
-    public static bool ValidateDuplicateScan(ScanEvent NewEvent, SerialNumber EventNumber, IEnumerable<string> DatabaseSet)
+    public static async Task<bool> ValidateUniqueScan(ScanOutput New, IEnumerable<string> DatabaseSet)
     {
-        // compare the ScanEvent data to each of the DatabaseSet entries
+        // compare New data to each of the DatabaseSet entries
         foreach (string _entry in DatabaseSet)
         {
-            if (Compare(NewEvent, EventNumber, _entry))
+            // convert the existing entry into a Scan object and compare the two
+            Scan _scan = await Scan.Parse(_entry);
+            if (CompareAsSameProcess(New, _scan))
             {
                 return false;
             }
