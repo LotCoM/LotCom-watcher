@@ -134,14 +134,15 @@ public class Worker : BackgroundService
                                     PreviousProcess: _output.Process.PreviousProcesses!
                                 );
                             }
-                            // the message failed to send
-                            catch (HttpRequestException)
-                            {
-                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
-                            }
+                            // the connection was refused (not found or unavailable)
                             catch (ArgumentException)
                             {
-                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                                Logger.LogError($"\tThe Scanner at {_output.Address} refused to produce a connection.");
+                            }
+                            // the message failed to send due to a system issue
+                            catch (SystemException)
+                            {
+                                Logger.LogError($"\tFailed to connect to the Scanner at {_output.Address}.");
                             }
                         }
                         // the Label was already scanned at this Process
@@ -157,14 +158,15 @@ public class Worker : BackgroundService
                                     Duration: 15
                                 );
                             }
-                            // the message failed to send
-                            catch (HttpRequestException)
-                            {
-                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
-                            }
+                            // the connection was refused (not found or unavailable)
                             catch (ArgumentException)
                             {
-                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
+                                Logger.LogError($"\tThe Scanner at {_output.Address} refused to produce a connection.");
+                            }
+                            // the message failed to send due to a system issue
+                            catch (SystemException)
+                            {
+                                Logger.LogError($"\tFailed to connect to the Scanner at {_output.Address}.");
                             }
                         }
                         // the Scan was valid
