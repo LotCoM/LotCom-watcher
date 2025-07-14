@@ -125,7 +125,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
+    public async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -157,7 +157,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, List<string> PreviousProcess)
+    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, List<string> PreviousProcess)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -188,7 +188,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
+    public async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
