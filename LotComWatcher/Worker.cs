@@ -18,7 +18,7 @@ public class Worker : BackgroundService
     private readonly ReaderService Reader;
 
     /// <summary>
-    /// Failed Scan Service that provides uniform logging of Scan Event processing steps that failed.
+    /// Failed Scan Service that provides uniform logging of Scan Output processing steps that failed.
     /// </summary>
     private readonly FailedScanService FailLogger;
 
@@ -44,25 +44,108 @@ public class Worker : BackgroundService
     /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
     /// Logs the failed Tasks in the failed scans log file.
     /// </summary>
-    /// <param name="RawScans"></param>
+    /// <param name="ScanOutputs"></param>
     /// <returns></returns>
-    private async Task<List<Task<ScanEvent>>> ClearFaultingParses(List<string> RawScans)
+    private async Task<List<Task<ScanOutput>>> ClearFaultingParses(List<string> ScanOutputs)
     {
-        List<Task<ScanEvent>> ParseTasks = [];
+        List<Task<ScanOutput>> ParseTasks = [];
         // check for faulting parses, remove them from the list, and log them
-        foreach (string _raw in RawScans)
+        foreach (string _raw in ScanOutputs)
         {
-            Task<ScanEvent> Parse = ScanEvent.ParseCSV(_raw);
+            Task<ScanOutput> Parse = ScanOutput.ParseCSV(_raw);
             if (!Parse.IsFaulted)
             {
                 ParseTasks.Add(Parse);
             }
             else
             {
-                await FailLogger.LogFailedScanEvent(_raw, Parse.Exception);
+                await FailLogger.LogFailedScan(_raw, Parse.Exception);
             }
         }
         return ParseTasks;
+    }
+
+    /// <summary>
+    /// Reads the scan output file and parses a List of ScanOutput objects.
+    /// </summary>
+    /// <returns></returns>
+    /// <exception cref="FileLoadException"></exception>
+    private async Task<ScanOutput[]> GetScans()
+    {
+        // read the scan output file
+        List<string> ScanOutputs;
+        try
+        {
+            ScanOutputs = await Reader.Read();
+        }
+        catch (OperationCanceledException _ex)
+        {
+            // log the exception and exit the Service
+            Logger.LogError(_ex, "{Message}", _ex.Message);
+            return [];
+        }
+        // asynchronously parse each Raw Scan into a ScanOutput object
+        List<Task<ScanOutput>> ParseTasks = await ClearFaultingParses(ScanOutputs);
+        return await Task.WhenAll(ParseTasks);
+    }
+
+    /// <summary>
+    /// Logs a console message stating that Output was missing a Scan at the previous Process.
+    /// </summary>
+    /// <param name="Output"></param>
+    /// <returns></returns>
+    private async Task LogMissingPreviousScan(ScanOutput Output)
+    {
+        // log to the console and send a message to the Scanner
+        Logger.LogWarning("Missing Scan in previous Process.");
+        try
+        {
+            await Network.SendMissingPreviousScanError
+            (
+                ScannerAddress: Output.Address,
+                Duration: 15,
+                PreviousProcess: Output.Process.PreviousProcesses!
+            );
+        }
+        // the connection was refused (not found or unavailable)
+        catch (ArgumentException)
+        {
+            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
+        }
+        // the message failed to send due to a system issue
+        catch (SystemException)
+        {
+            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
+        }
+    }
+
+    /// <summary>
+    /// Logs a console message stating that Output was a duplicate Scan.
+    /// </summary>
+    /// <param name="Output"></param>
+    /// <returns></returns>
+    private async Task LogDuplicateScan(ScanOutput Output)
+    {
+        // log to the console and send a message to the Scanner
+        Logger.LogWarning("Duplicate Scan.");
+        try
+        {
+            await Network.SendDuplicateScanError
+            (
+                ScannerAddress: Output.Address,
+                Duration: 15
+            );
+        }
+        // the connection was refused (not found or unavailable)
+        catch (ArgumentException)
+        {
+            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
+        }
+        // the message failed to send due to a system issue
+        catch (SystemException)
+        {
+            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
+        }
     }
 
     /// <summary>
@@ -77,89 +160,40 @@ public class Worker : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                // read the Scan Output file
-                List<string> Results = [];
-                try
+                // read the Scan Output file; confirm parsing did not fail/return null
+                ScanOutput[] Outputs = await GetScans();
+                if (Outputs is null || Outputs.Length < 1)
                 {
-                    Results = await Reader.Read();
+                    Logger.LogInformation("No new Scans.");
+                    continue;
                 }
-                catch (OperationCanceledException _ex)
+                // create scans in Database
+                DatabaseContext? DbContext = null;
+                foreach (ScanOutput _output in Outputs)
                 {
-                    // log the exception and exit the Service
-                    Logger.LogError(_ex, "{Message}", _ex.Message);
-                    Environment.Exit(1);
-                }
-                // asynchronously parse each Raw Scan into a ScanEvent object
-                List<Task<ScanEvent>> ParseTasks = await ClearFaultingParses(Results);
-                ScanEvent[] ParseResults = await Task.WhenAll(ParseTasks);
-                // confirm that the parsing did not fail and/or return null
-                if (ParseResults is null)
-                {
-                    Logger.LogInformation("No new Scan Events.");
-                }
-                else
-                {
-                    // Route ScanEvents
-                    foreach (ScanEvent _event in ParseResults)
+                    // attempt to use the same DatabaseContext as the previous iteration
+                    if (DbContext is null || !DbContext.Process.FullName.Equals(_output.Process.FullName))
                     {
-                        // capture the message from the Router on each ScanEvent and Log a respective string
-                        InsertionMessage Message = EventRouter.Route(_event);
-                        // no scan occurred at the previous process
-                        if (Message == InsertionMessage.MissingPrevious)
-                        {
-                            // log to the console and send a message to the Scanner
-                            Logger.LogWarning("Missing Previous Process");
-                            try
-                            {
-                                await Network.SendMissingPreviousScanError
-                                (
-                                    ScannerAddress: _event.Address,
-                                    Duration: 15,
-                                    PreviousProcess: _event.Label.Process.PreviousProcesses![0]
-                                );
-                            }
-                            // the message failed to send
-                            catch (HttpRequestException)
-                            {
-                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
-                            }
-                            catch (ArgumentException)
-                            {
-                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
-                            }
-                        }
-                        // the Label was already scanned at this Process
-                        else if (Message == InsertionMessage.DuplicateScan)
-                        {
-                            // log to the console and send a message to the Scanner
-                            Logger.LogWarning("Duplicate Scan");
-                            try
-                            {
-                                await Network.SendDuplicateScanError
-                                (
-                                    ScannerAddress: _event.Address,
-                                    Duration: 15
-                                );
-                            }
-                            // the message failed to send
-                            catch (HttpRequestException)
-                            {
-                                Logger.LogError("\tFailed to connect to the Scanner to send Message.");
-                            }
-                            catch (ArgumentException)
-                            {
-                                Logger.LogError("\tThe IP Address and/or endpoint refused to produce a connection.");
-                            }
-                        }
-                        // the Scan was valid
-                        else
-                        {
-                            Logger.LogInformation("Valid Entry");
-                        }
+                        // db context is not for the needed Process; make a new one
+                        DbContext = new DatabaseContext(_output.Process);
                     }
+                    // perform CRUD create operation and record the message from the DbContext
+                    InsertionMessage Message = await DbContext.CreateScan(_output);
+                    // no scan occurred at the previous process
+                    if (Message == InsertionMessage.MissingPrevious)
+                    {
+                        await LogMissingPreviousScan(_output);
+                        continue;
+                    }
+                    // the Label was already scanned at this Process
+                    else if (Message == InsertionMessage.DuplicateScan)
+                    {
+                        await LogDuplicateScan(_output);
+                        continue;
+                    }
+                    // the Scan was valid
+                    Logger.LogInformation("Created new Scan entry.");
                 }
-                // loop every 500 milliseconds (1/2 second)
-                await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
             }
         }
         catch (OperationCanceledException)
