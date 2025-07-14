@@ -91,7 +91,7 @@ jobs:
       shell: pwsh
       run: |
         # run the LotComWatcherSetup.exe script (Wix)
-        cd "D:\a\LotCom-watcher\LotCom-watcher\LotComWatcher\LotCom-watcher-setup\LotComWatcherSetup"
+        cd "D:\a\LotCom-watcher\LotCom-watcher\LotComWatcher\LotCom-watcher-setup\LotComWatcherSetup\bin\Debug\net472"
         .\LotComWatcherSetup.exe "$env:VERSION_NUMBER"
 
         # save the MSI to a Package directory
