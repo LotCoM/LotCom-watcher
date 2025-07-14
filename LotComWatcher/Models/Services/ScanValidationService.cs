@@ -1,6 +1,5 @@
 using LotCom.Database;
 using LotCom.Enums;
-using LotCom.Exceptions;
 using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
 
@@ -11,11 +10,6 @@ namespace LotComWatcher.Models.Services;
 /// </summary>
 public static class ScanValidationService
 {
-    /// <summary>
-    /// URI for the "scans" section of the Database, where each Process' scan datatable lives.
-    /// </summary>
-    private static readonly string ScanFolder = "\\\\144.133.122.1\\Lot Control Management\\Database\\data_tables\\scans";
-
     /// <summary>
     /// Compares two Dates (one from new ScanOutput and one from existing Scan). 
     /// Returns whether the ExistingDate is within the passed RangeInDays after NewDate.
@@ -126,39 +120,11 @@ public static class ScanValidationService
     /// </summary>
     /// <param name="New"></param>
     /// <returns></returns>
-    /// <exception cref="ProcessNameException"></exception>
-    /// <exception cref="DatabaseException"></exception>
-    public static async Task<bool> ValidatePreviousProcess(ScanOutput New)
+    public static bool ValidatePreviousProcess(ScanOutput New, IEnumerable<Scan> DatabaseSet)
     {
-        // prepare the Table and DatabaseSet
-        string TablePath = "";
-        IEnumerable<string> DatabaseSet; // was Lines
-        try
-        {
-            // Creating TablePath that points us to the correct folder which is the process name. 
-            TablePath = $"{ScanFolder}\\{New.Process.PreviousProcesses![0]}.txt";
-            // Creating an array that is reading all the lines through the TablePath file.
-            DatabaseSet = File.ReadAllLines(TablePath);
-        }
-        // the file could not be found by the Router
-        catch (FileNotFoundException)
-        {
-            throw new ProcessNameException($"Could not find a table for the Process '{New.Process.PreviousProcesses![0]}'.");
-        }
-        // there was another issue accessing the file
-        catch (SystemException _ex)
-        {
-            throw new DatabaseException
-            (
-                Message: $"Failed to open the file at '{TablePath}' due to the following exception:\n{_ex.Message}.",
-                InnerException: _ex
-            );
-        }
         // compare the New data to each of the DatabaseSet entries
-        foreach (string _entry in DatabaseSet)
+        foreach (Scan _scan in DatabaseSet)
         {
-            // convert the existing entry into a Scan object and compare the two
-            Scan _scan = await Scan.Parse(_entry);
             if (CompareAsPreviousProcess(New, _scan))
             {
                 return true;
@@ -173,13 +139,11 @@ public static class ScanValidationService
     /// <param name="New"></param>
     /// <param name="DatabaseSet"></param>
     /// <returns></returns>
-    public static async Task<bool> ValidateUniqueScan(ScanOutput New, IEnumerable<string> DatabaseSet)
+    public static bool ValidateUniqueScan(ScanOutput New, IEnumerable<Scan> DatabaseSet)
     {
         // compare New data to each of the DatabaseSet entries
-        foreach (string _entry in DatabaseSet)
+        foreach (Scan _scan in DatabaseSet)
         {
-            // convert the existing entry into a Scan object and compare the two
-            Scan _scan = await Scan.Parse(_entry);
             if (CompareAsSameProcess(New, _scan))
             {
                 return false;
