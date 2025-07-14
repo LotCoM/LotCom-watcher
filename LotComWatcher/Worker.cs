@@ -1,3 +1,4 @@
+using LotCom.Types;
 using LotComWatcher.Models.Datasources;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
@@ -100,10 +101,25 @@ public class Worker : BackgroundService
                 else
                 {
                     // create scans in Database
+                    Process? PriorIterationProcess = null;
+                    DatabaseContext? DbContext = null;
                     foreach (ScanOutput _output in ParseResults)
                     {
+                        // attempt to use the same DatabaseContext as the previous iteration
+                        if
+                        (
+                            PriorIterationProcess is null
+                            || DbContext is null
+                            || !PriorIterationProcess.FullName.Equals(_output.Process.FullName)
+                        )
+                        {
+                            // db context is not for the needed Process; make a new one
+                            DbContext = new DatabaseContext(_output.Process);
+                        }
+                        // update iteration process
+                        PriorIterationProcess = _output.Process;
                         // capture the message from the Manager on each ScanOutput and Log a respective string
-                        InsertionMessage Message = await DatabaseManager.CreateScan(_output);
+                        InsertionMessage Message = await DbContext.CreateScan(_output);
                         // no scan occurred at the previous process
                         if (Message == InsertionMessage.MissingPrevious)
                         {
