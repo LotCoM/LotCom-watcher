@@ -71,15 +71,31 @@ jobs:
       run: |
         dotnet build -f net9.0-windows10.0.19041.0 -c Release -p:RuntimeIdentifierOverride=win10-x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true --sc
 
+    - name: Download setup
+      env:
+        PAT_1: ${{ secrets.PAT_1 }}
+      shell: pwsh
+      run: |
+        # download LotCom-watcher-setup latest
+        cd "D:\a\LotCom-watcher\LotComWatcher"
+        git clone https://masonritchason:${env:PAT_1}@github.com/LotCom/LotCom-watcher-setup.git
+
+    - name: Build setup
+      shell: pwsh
+      run: |
+        # build the Wix setup program
+        cd "D:\a\LotCom-watcher\LotComWatcher\LotCom-watcher-setup"
+        dotnet build
+
     - name: Run setup
       shell: pwsh
       run: |
         # run the LotComWatcherSetup.exe script (Wix)
-        cd LotComWatcher\Setup
+        cd "D:\a\LotCom-watcher\LotComWatcher\LotCom-watcher-setup\LotComWatcherSetup"
         .\LotComWatcherSetup.exe "$env:VERSION_NUMBER"
 
         # save the MSI to a Package directory
-        cd ..\bin\Release\net9.0-windows10.0.19041.0\win-x64\Installer
+        cd "D:\a\LotCom-watcher\LotComWatcher\bin\Release\net9.0-windows10.0.19041.0\win-x64\Installer"
         New-Item -ItemType directory -Path "D:\a\Package" -ErrorAction SilentlyContinue
         Copy-Item -Path ".\LotComWatcher_$env:VERSION_NUMBER.msi" -Destination "D:\a\Package"
 
@@ -116,5 +132,5 @@ jobs:
         # use default tag for generated releases
         $tag = "$env:VERSION_NUMBER"
 
-        # upload the MSIX to the release
+        # upload the MSI to the release
         gh release upload $tag "D:\a\Package\LotComWatcher_$env:VERSION_NUMBER.msi"
