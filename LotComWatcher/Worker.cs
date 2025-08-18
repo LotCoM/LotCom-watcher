@@ -1,7 +1,10 @@
-using LotComWatcher.Models.Datasources;
+using LotCom.DataAccess;
+using LotCom.DataAccess.Services;
+using LotCom.Exceptions;
+using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
-using LotComWatcher.Models.Enums;
 using LotComWatcher.Models.Services;
+using Newtonsoft.Json;
 
 namespace LotComWatcher;
 
@@ -28,6 +31,11 @@ public class Worker : BackgroundService
     private readonly NetworkService Network;
 
     /// <summary>
+    /// A UserAgent object that can be used to authorize API calls from this object.
+    /// </summary>
+    private readonly UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
+
+    /// <summary>
     /// Creates a Service Worker that performs the Service's main event/work loop.
     /// </summary>
     /// <param name="Logger"></param>
@@ -52,10 +60,14 @@ public class Worker : BackgroundService
         // check for faulting parses, remove them from the list, and log them
         foreach (string _raw in ScanOutputs)
         {
-            Task<ScanOutput> Parse = ScanOutput.ParseCSV(_raw);
-            if (!Parse.IsFaulted)
+            Task<ScanOutput?> Parse = ScanOutput.ParseCSV(_raw);
+            if (Parse is null)
             {
-                ParseTasks.Add(Parse);
+                continue;
+            }
+            else if (!Parse.IsFaulted)
+            {
+                ParseTasks.Add(Parse!);
             }
             else
             {
@@ -168,25 +180,39 @@ public class Worker : BackgroundService
                     continue;
                 }
                 // create scans in Database
-                DatabaseContext? DbContext = null;
                 foreach (ScanOutput _output in Outputs)
                 {
-                    // attempt to use the same DatabaseContext as the previous iteration
-                    if (DbContext is null || !DbContext.Process.FullName.Equals(_output.Process.FullName))
+                    // retrieve all of the Scans from the Database
+                    IEnumerable<Scan>? DbSet;
+                    try
                     {
-                        // db context is not for the needed Process; make a new one
-                        DbContext = new DatabaseContext(_output.Process);
+                        DbSet = await ScanService.GetAll(Agent);
                     }
-                    // perform CRUD create operation and record the message from the DbContext
-                    InsertionMessage Message = await DbContext.CreateScan(_output);
-                    // no scan occurred at the previous process
-                    if (Message == InsertionMessage.MissingPrevious)
+                    // some database-generated issue
+                    catch (HttpRequestException _ex)
+                    {
+                        throw new DatabaseException("Could not retreive Scans from the Database.", _ex);
+                    }
+                    // some formatting issue
+                    catch (JsonException _ex)
+                    {
+                        throw new DatabaseException("Could not process JSON response.", _ex);
+                    }
+                    // no Scans retrieved
+                    if (DbSet is null)
+                    {
+                        throw new DatabaseException("Could not retreive Scans from the Database.");
+                    }
+                    // perform validations (unique; previous process scanned)
+                    bool Unique = await ScanValidationService.ValidateUniqueScan(_output, DbSet);
+                    bool PreviousScan = await ScanValidationService.ValidatePreviousProcess(_output, DbSet);
+                    // check results of validations
+                    if (!Unique)
                     {
                         await LogMissingPreviousScan(_output);
                         continue;
                     }
-                    // the Label was already scanned at this Process
-                    else if (Message == InsertionMessage.DuplicateScan)
+                    else if (!PreviousScan)
                     {
                         await LogDuplicateScan(_output);
                         continue;
