@@ -1,9 +1,10 @@
 using System.Globalization;
 using System.Net;
-using LotCom.Database;
-using LotCom.Enums;
 using LotCom.Exceptions;
 using LotCom.Types;
+using LotCom.DataAccess.Services;
+using LotCom.DataAccess;
+using Newtonsoft.Json;
 
 namespace LotComWatcher.Models.Datatypes;
 
@@ -24,8 +25,13 @@ namespace LotComWatcher.Models.Datatypes;
 /// <param name="ProductionOperator"></param>
 /// <param name="FirstPartialDataSet"></param>
 /// <param name="SecondPartialDataSet"></param>
-public sealed class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, Part Part, VariableFieldSet VariableFields, DateTime ProductionDate, PartialDataSet PrimaryDataSet, PartialDataSet? FirstPartialDataSet = null, PartialDataSet? SecondPartialDataSet = null)
+public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, Part Part, VariableFieldSet VariableFields, DateTime ProductionDate, PartialDataSet PrimaryDataSet, PartialDataSet? FirstPartialDataSet = null, PartialDataSet? SecondPartialDataSet = null)
 {
+    /// <summary>
+    /// A UserAgent object that can be used to authorize API calls from this object.
+    /// </summary>
+    private static UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
+
     /// <summary>
     /// The Date and Time on which the ScanEvent was executed.
     /// </summary>
@@ -72,6 +78,79 @@ public sealed class ScanOutput(DateTime ScanDate, IPAddress Address, Process Pro
     public PartialDataSet? SecondPartialDataSet = SecondPartialDataSet;
 
     /// <summary>
+    /// Attempts to find a Process that matches ProcessFullName in the Process Database.
+    /// </summary>
+    /// <param name="ProcessFullName"></param>
+    /// <returns></returns>
+    /// <exception cref="DatabaseException"></exception>
+    private static async Task<Process?> RetrieveProcess(string ProcessFullName)
+    {
+        // retrieve all Processes from the Database
+        IEnumerable<Process>? ProcessesFromDatabase;
+        try
+        {
+            ProcessesFromDatabase = await ProcessService.GetAll(Agent);
+        }
+        // some database-generated issue
+        catch (HttpRequestException _ex)
+        {
+            throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
+        }
+        // some formatting issue
+        catch (JsonException _ex)
+        {
+            throw new DatabaseException("Could not process JSON response.", _ex);
+        }
+        // no Processes retrieved
+        if (ProcessesFromDatabase is null)
+        {
+            return null;
+        }
+        // attempt to locate the Process using the name in the ScanOutput
+        Process? Process = ProcessesFromDatabase
+            .Where(x => x.FullName.Equals(ProcessFullName))
+            .FirstOrDefault();
+        return Process;
+    }
+    
+    /// <summary>
+    /// Attempts to find a Part that matches PartNumber and is scanned by ScannedBy in the Part Database.
+    /// </summary>
+    /// <param name="PartNumber"></param>
+    /// <param name="ScannedBy"></param>
+    /// <returns></returns>
+    /// <exception cref="DatabaseException"></exception>
+    private static async Task<Part?> RetrievePart(string PartNumber, int ScannedBy)
+    {
+        // retrieve all Parts from the Database
+        IEnumerable<Part>? PartsFromDatabase;
+        try
+        {
+            PartsFromDatabase = await PartService.GetScannedByProcess(ScannedBy, Agent);
+        }
+        // some database-generated issue
+        catch (HttpRequestException _ex)
+        {
+            throw new DatabaseException("Could not retreive Parts from the Database.", _ex);
+        }
+        // some formatting issue
+        catch (JsonException _ex)
+        {
+            throw new DatabaseException("Could not process JSON response.", _ex);
+        }
+        // no Parts retrieved
+        if (PartsFromDatabase is null)
+        {
+            return null;
+        }
+        // attempt to locate the Part using the name in the ScanOutput
+        Part? Part = PartsFromDatabase
+            .Where(x => x.PartNumber.Equals(PartNumber))
+            .FirstOrDefault();
+        return Part;
+    }
+
+    /// <summary>
     /// Attempts to create a ScanOutput object from a passed Comma-separated value string.
     /// </summary>
     /// <param name="CSVLine"></param>
@@ -80,22 +159,20 @@ public sealed class ScanOutput(DateTime ScanDate, IPAddress Address, Process Pro
     /// <exception cref="FormatException"></exception>
     /// <exception cref="DatabaseException"></exception>
     /// <exception cref="OverflowException"></exception>
-    public static async Task<ScanOutput> ParseCSV(string CSVLine)
+    public static async Task<ScanOutput?> ParseCSV(string CSVLine)
     {
         // split the line by the comma character
         string[] SplitLine = CSVLine.Split(',');
-        // create a Process Data Reader and attempt to retrieve the Process and Part from the Database
-        ProcessData Data = new ProcessData();
-        Process Process;
-        Part Part;
-        try
+        // attempt to retrieve the ScanOutput's Process and Part
+        Process? Process = await RetrieveProcess(SplitLine[2]);
+        if (Process is null)
         {
-            Process = await Data.GetIndividualProcessAsync(SplitLine[2]);
-            Part = await Data.GetProcessPartDataAsync(Process.FullName, SplitLine[3]);
+            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[2]}'.");
         }
-        catch (SystemException _ex)
+        Part? Part = await RetrievePart(SplitLine[3], Process.Id);
+        if (Part is null)
         {
-            throw new DatabaseException($"Failed to get the requested Process '{SplitLine[2]}' and/or Part '{SplitLine[3]}'.", _ex);
+            throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[3]}'.");
         }
         // parse a VariableFieldSet from the line
         VariableFieldSet VariableFields;
@@ -173,47 +250,16 @@ public sealed class ScanOutput(DateTime ScanDate, IPAddress Address, Process Pro
     {
         return new Scan
         (
+            0,
             Process,
             ScanDate,
             Address,
             Part,
-            PrimaryDataSet,
             VariableFields,
             ProductionDate,
+            PrimaryDataSet,
             FirstPartialDataSet,
             SecondPartialDataSet
-        );
-    }
-
-    /// <summary>
-    /// Uses the ScanOutput's properties to construct and return a SerialNumber object.
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="FormatException"></exception>
-    public SerialNumber GetSerialNumber()
-    {
-        int Literal;
-        // use the JBK number
-        if (Process.Serialization == SerializationMode.JBK || Process.PassThroughType == PassThroughType.JBK)
-        {
-            Literal = VariableFields.JBKNumber!.Literal;
-        }
-        // use the Lot number
-        else if (Process.Serialization == SerializationMode.Lot || Process.PassThroughType == PassThroughType.Lot)
-        {
-            Literal = VariableFields.LotNumber!.Literal;
-        }
-        // Process' Serialization is mis-configured
-        else
-        {
-            throw new FormatException("There was a configuration issue with the Process. No Serialization is available.");
-        }
-        // construct and return a SerialNumber
-        return new SerialNumber
-        (
-            Process.Serialization,
-            Part,
-            Literal
         );
     }
 }
