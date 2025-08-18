@@ -157,7 +157,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, List<string> PreviousProcess)
+    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, IEnumerable<int> PreviousProcess)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -165,7 +165,7 @@ public sealed class NetworkService
             bool Sent = SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n").Result;
             if (Sent)
             {
-                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"This Label was not scanned by {PreviousProcess[0]}. Basket is not valid for use.\"\r\n");
+                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"This Label was not scanned by {PreviousProcess.First()}. Basket is not valid for use.\"\r\n");
             }
         }
         catch (ArgumentException)
