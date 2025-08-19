@@ -129,6 +129,36 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
+    /// Logs a console message stating that Output's Part was not acceptable by its Process.
+    /// Additionally sends a matching message to the Scanner that created the Scan.
+    /// </summary>
+    /// <param name="Output"></param>
+    /// <returns></returns>
+    private async Task LogInvalidPart(ScanOutput Output)
+    {
+        // log to the console and send a message to the Scanner
+        Logger.LogWarning("Invalid Part.");
+        try
+        {
+            await Network.SendInvalidPartError
+            (
+                ScannerAddress: Output.Address,
+                Duration: 15
+            );
+        }
+        // the connection was refused (not found or unavailable)
+        catch (ArgumentException)
+        {
+            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
+        }
+        // the message failed to send due to a system issue
+        catch (SystemException)
+        {
+            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
+        }
+    }
+
+    /// <summary>
     /// Defines the service's event loop while running.
     /// </summary>
     /// <param name="stoppingToken"></param>
@@ -175,9 +205,10 @@ public class Worker : BackgroundService
                     {
                         continue;
                     }
-                    // perform validations (unique; previous process scanned)
+                    // perform validations (unique; previous process scanned; accepted part)
                     bool Unique = await ScanValidationService.ValidateUniqueScan(_output, ScansFromDatabase);
                     bool PreviousScan = await ScanValidationService.ValidatePreviousProcess(_output, ScansFromDatabase);
+                    bool ScannablePart = await PartValidationService.ValidatePartForProcess(_output.Part, _output.Process);
                     // check results of validations
                     if (!Unique)
                     {
@@ -189,8 +220,13 @@ public class Worker : BackgroundService
                         await LogMissingPreviousScan(_output);
                         continue;
                     }
+                    else if (!ScannablePart)
+                    {
+                        await LogInvalidPart(_output);
+                        continue;
+                    }
                     // the Scan was valid; insert it into the Db
-                    Scan ScanToCreate = _output.ToScan();
+                        Scan ScanToCreate = _output.ToScan();
                     bool Created;
                     try
                     {
