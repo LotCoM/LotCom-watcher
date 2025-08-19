@@ -15,11 +15,17 @@ public static class ScanValidationService
     /// <returns></returns>
     public static async Task<bool> ValidatePreviousProcess(ScanOutput New, IEnumerable<Scan> DbSet)
     {
+        // confirm that the Scan needs to have a Previous Process performed
+        Scan NewAsScan = New.ToScan();
+        if (!NewAsScan.HasPreviousProcess())
+        {
+            return true;
+        }
         return await Task.Run(() =>
         {
             // compare the New data to each of the DatabaseSet entries
             Scan? Previous = DbSet
-                .Where(x => x.IsFromPreviousProcess(New.ToScan()))
+                .Where(x => NewAsScan.IsFromPreviousProcess(x))
                 .FirstOrDefault();
             if (Previous is null)
             {
