@@ -16,16 +16,6 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> Logger;
 
     /// <summary>
-    /// Reader service that provides resillient asynchronous reading of files to the service.
-    /// </summary>
-    private readonly ReaderService Reader;
-
-    /// <summary>
-    /// Network service that provides uniform Scanner messaging capabilities.
-    /// </summary>
-    private readonly NetworkService Network;
-
-    /// <summary>
     /// A UserAgent object that can be used to authorize API calls from this object.
     /// </summary>
     private readonly UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
@@ -34,37 +24,9 @@ public class Worker : BackgroundService
     /// Creates a Service Worker that performs the Service's main event/work loop.
     /// </summary>
     /// <param name="Logger"></param>
-    /// <param name="Reader"></param>
-    public Worker(ILogger<Worker> Logger, ReaderService Reader, NetworkService Network)
+    public Worker(ILogger<Worker> Logger)
     {
         this.Logger = Logger;
-        this.Reader = Reader;
-        this.Network = Network;
-    }
-
-    /// <summary>
-    /// Reads the scan output file and parses a List of ScanOutput objects.
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="FileLoadException"></exception>
-    private async Task<ScanOutput?[]?> GetScans()
-    {
-        // read the scan output file
-        List<string> ScanOutputs;
-        try
-        {
-            ScanOutputs = await Reader.Read();
-        }
-        catch (OperationCanceledException _ex)
-        {
-            // log the exception and exit the Service
-            Logger.LogError(_ex, "{Message}", _ex.Message);
-            return null;
-        }
-        // asynchronously parse each Raw Scan into a ScanOutput object
-        IEnumerable<Task<ScanOutput?>> ParseTasks = ScanOutputs.Select(ScanOutput.ParseCSV);
-        ScanOutput?[]? ParseResults = await Task.WhenAll(ParseTasks);
-        return ParseResults;
     }
 
     /// <summary>
@@ -79,7 +41,7 @@ public class Worker : BackgroundService
         Logger.LogWarning("Missing Scan in previous Process.");
         try
         {
-            await Network.SendMissingPreviousScanError
+            await NetworkService.SendMissingPreviousScanError
             (
                 ScannerAddress: Output.Address,
                 Duration: 15,
@@ -110,7 +72,7 @@ public class Worker : BackgroundService
         Logger.LogWarning("Duplicate Scan.");
         try
         {
-            await Network.SendDuplicateScanError
+            await NetworkService.SendDuplicateScanError
             (
                 ScannerAddress: Output.Address,
                 Duration: 15
@@ -140,7 +102,7 @@ public class Worker : BackgroundService
         Logger.LogWarning("Invalid Part.");
         try
         {
-            await Network.SendInvalidPartError
+            await NetworkService.SendInvalidPartError
             (
                 ScannerAddress: Output.Address,
                 Duration: 15
@@ -192,13 +154,13 @@ public class Worker : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 // read the Scan Output file; confirm parsing did not fail/return null
-                ScanOutput?[]? Outputs = await GetScans();
-                if (Outputs is null || Outputs.Length < 1)
+                IEnumerable<ScanOutput> Outputs = await ReaderService.ReadNewScans();
+                if (!Outputs.Any())
                 {
                     continue;
                 }
                 // create scans in Database
-                foreach (ScanOutput? _output in Outputs)
+                foreach (ScanOutput _output in Outputs)
                 {
                     // confirm that the output is non-null
                     if (_output is null)
