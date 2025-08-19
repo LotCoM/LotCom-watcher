@@ -21,11 +21,6 @@ public class Worker : BackgroundService
     private readonly ReaderService Reader;
 
     /// <summary>
-    /// Failed Scan Service that provides uniform logging of Scan Output processing steps that failed.
-    /// </summary>
-    private readonly FailedScanService FailLogger;
-
-    /// <summary>
     /// Network service that provides uniform Scanner messaging capabilities.
     /// </summary>
     private readonly NetworkService Network;
@@ -40,11 +35,10 @@ public class Worker : BackgroundService
     /// </summary>
     /// <param name="Logger"></param>
     /// <param name="Reader"></param>
-    public Worker(ILogger<Worker> Logger, ReaderService Reader, FailedScanService FailLogger, NetworkService Network)
+    public Worker(ILogger<Worker> Logger, ReaderService Reader, NetworkService Network)
     {
         this.Logger = Logger;
         this.Reader = Reader;
-        this.FailLogger = FailLogger;
         this.Network = Network;
     }
 
@@ -53,7 +47,7 @@ public class Worker : BackgroundService
     /// </summary>
     /// <returns></returns>
     /// <exception cref="FileLoadException"></exception>
-    private async Task<ScanOutput?[]> GetScans()
+    private async Task<ScanOutput?[]?> GetScans()
     {
         // read the scan output file
         List<string> ScanOutputs;
@@ -65,11 +59,11 @@ public class Worker : BackgroundService
         {
             // log the exception and exit the Service
             Logger.LogError(_ex, "{Message}", _ex.Message);
-            return [];
+            return null;
         }
         // asynchronously parse each Raw Scan into a ScanOutput object
         IEnumerable<Task<ScanOutput?>> ParseTasks = ScanOutputs.Select(ScanOutput.ParseCSV);
-        ScanOutput?[] ParseResults = await Task.WhenAll(ParseTasks);
+        ScanOutput?[]? ParseResults = await Task.WhenAll(ParseTasks);
         return ParseResults;
     }
 
@@ -168,7 +162,7 @@ public class Worker : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 // read the Scan Output file; confirm parsing did not fail/return null
-                ScanOutput?[] Outputs = await GetScans();
+                ScanOutput?[]? Outputs = await GetScans();
                 if (Outputs is null || Outputs.Length < 1)
                 {
                     continue;
