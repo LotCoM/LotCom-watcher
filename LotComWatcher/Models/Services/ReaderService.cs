@@ -23,7 +23,15 @@ public static class ReaderService
         IEnumerable<Task<ScanOutput>> ParseTasks = [];
         foreach (string _raw in RawScans)
         {
-            Task<ScanOutput> Parse = ScanOutput.ParseCSV(_raw);
+            Task<ScanOutput>? Parse;
+            try
+            {
+                Parse = ScanOutput.ParseCSV(_raw);
+            }
+            catch
+            {
+                Parse = null;
+            }
             if (Parse is null)
             {
                 continue;
