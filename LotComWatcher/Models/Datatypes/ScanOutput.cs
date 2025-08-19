@@ -126,7 +126,7 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
         IEnumerable<Part>? PartsFromDatabase;
         try
         {
-            PartsFromDatabase = await PartService.GetScannedByProcess(ScannedBy, Agent);
+            PartsFromDatabase = await PartService.GetPrintedByProcess(ScannedBy, Agent);
         }
         // some database-generated issue
         catch (HttpRequestException _ex)
