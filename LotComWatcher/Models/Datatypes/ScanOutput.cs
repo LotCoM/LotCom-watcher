@@ -159,7 +159,7 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
     /// <exception cref="FormatException"></exception>
     /// <exception cref="DatabaseException"></exception>
     /// <exception cref="OverflowException"></exception>
-    public static async Task<ScanOutput?> ParseCSV(string CSVLine)
+    public static async Task<ScanOutput> ParseCSV(string CSVLine)
     {
         // split the line by the comma character
         string[] SplitLine = CSVLine.Split(',');
