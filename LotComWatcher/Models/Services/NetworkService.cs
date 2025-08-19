@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using LotComWatcher.Models.Datatypes;
+using LotComWatcher.Models.Enums;
+using LotComWatcher.Models.Extensions;
 
 namespace LotComWatcher.Models.Services;
 
@@ -223,6 +226,36 @@ public static class NetworkService
             if (Sent)
             {
                 await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Invalid Part Label scanned.\"\r\n");
+            }
+        }
+        catch (ArgumentException)
+        {
+            throw new SystemException("Could not establish a connection to the Scanner.");
+        }
+        catch (SystemException)
+        {
+            throw new SystemException("Failed to request a connection.");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Sends a Scan Validation Failure message to the Scanner that produced New.
+    /// </summary>
+    /// <param name="New"></param>
+    /// <param name="Duration"></param>
+    /// <param name="Fault"></param>
+    /// <returns></returns>
+    /// <exception cref="SystemException"></exception>
+    public static async Task<bool> SendScanValidationError(ScanOutput New, int Duration, ValidationFailure Fault)
+    {
+        // send Data Validation Failure and Send Alert DMCCs to the Scanner
+        try
+        {
+            bool Sent = await SendMessage(New.ScanAddress, "||>OUTPUT.DATAVALID-FAIL\r\n");
+            if (Sent)
+            {
+                await SendMessage(New.ScanAddress, $"||>UI.SEND-ALERT {Duration} 2 \"{ValidationFailureExtensions.ToMessage(Fault)}\"\r\n");
             }
         }
         catch (ArgumentException)
