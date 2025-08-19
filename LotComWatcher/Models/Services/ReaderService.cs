@@ -2,35 +2,29 @@ using LotComWatcher.Models.Exceptions;
 
 namespace LotComWatcher.Models.Services;
 
-public sealed class ReaderService
+/// <summary>
+/// Provides reading methods to pull Scanner output from the output file.
+/// </summary>
+public static class ReaderService
 {
     /// <summary>
     /// The raw output file that contains scan results from LotCom Scanners.
     /// </summary>
-    private const string OutputFile = @"\\144.133.122.1\Lot Control Management\SCAN-OUTPUT.txt";
-
-    /// <summary>
-    /// Provides reading capabilities on the Scanner output file.
-    /// </summary>
-    public ReaderService()
-    {
-
-    }
+    private const string OutputFile = @"C:\LotCom\scan_out.txt";
 
     /// <summary>
     /// Attempts to read and return all of the Lines in the Scan Output File.
     /// </summary>
-    /// <returns>A List of Scan results as strings.</returns>
+    /// <returns>An IEnumerable of Scan results as strings.</returns>
     /// <exception cref="OutputFileAccessException"></exception>
-    public async Task<List<string>> Read()
+    public static async Task<IEnumerable<string>> Read()
     {
         // attempt to read the Scan Output file and throw an access exception if the read fails
+        string[] RawScans;
         try
         {
-            // save the Raw Scans from the file, clear its contents, and return the Scans
-            string[] RawScans = await File.ReadAllLinesAsync(OutputFile);
-            await File.WriteAllTextAsync(OutputFile, "");
-            return RawScans.ToList();
+            // save the Raw Scans from the file
+            RawScans = await File.ReadAllLinesAsync(OutputFile);
         }
         catch (OperationCanceledException _ex)
         {
@@ -41,5 +35,8 @@ public sealed class ReaderService
                 + $"\t{_ex.StackTrace}"
             );
         }
+        // clear the file contents and return new Scan outputs
+        await File.WriteAllTextAsync(OutputFile, "");
+        return RawScans;
     }
 }
