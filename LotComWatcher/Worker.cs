@@ -3,6 +3,8 @@ using LotCom.DataAccess.Services;
 using LotCom.Exceptions;
 using LotCom.Types;
 using LotComWatcher.Models.Datatypes;
+using LotComWatcher.Models.Enums;
+using LotComWatcher.Models.Extensions;
 using LotComWatcher.Models.Services;
 using Newtonsoft.Json;
 
@@ -30,93 +32,34 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Logs a console message stating that Output was missing a Scan at the previous Process.
-    /// Additionally sends a matching message to the Scanner that created the Scan.
+    /// Logs and communicates a failed Scan validation to the service log and Scanner that produced the Scan.
     /// </summary>
-    /// <param name="Output"></param>
+    /// <param name="New"></param>
+    /// <param name="Fault"></param>
     /// <returns></returns>
-    private async Task LogMissingPreviousScan(ScanOutput Output)
+    private async Task CommunicateFailedScanValidation(ScanOutput New, ValidationFailure Fault)
     {
-        // log to the console and send a message to the Scanner
-        Logger.LogWarning("Missing Scan in previous Process.");
+        // log the Failure in the service
+        Logger.LogWarning($"{ValidationFailureExtensions.ToMessage(Fault)}.");
+        // send a message to the Scanner
         try
         {
-            await NetworkService.SendMissingPreviousScanError
+            await NetworkService.SendScanValidationError
             (
-                ScannerAddress: Output.Address,
-                Duration: 15,
-                PreviousProcess: Output.Process.PreviousProcesses!
+                New,
+                15,
+                Fault
             );
         }
         // the connection was refused (not found or unavailable)
         catch (ArgumentException)
         {
-            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
+            Logger.LogError($"\tThe Scanner at {New.ScanAddress} refused to produce a connection.");
         }
         // the message failed to send due to a system issue
         catch (SystemException)
         {
-            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
-        }
-    }
-
-    /// <summary>
-    /// Logs a console message stating that Output was a duplicate Scan.
-    /// Additionally sends a matching message to the Scanner that created the Scan.
-    /// </summary>
-    /// <param name="Output"></param>
-    /// <returns></returns>
-    private async Task LogDuplicateScan(ScanOutput Output)
-    {
-        // log to the console and send a message to the Scanner
-        Logger.LogWarning("Duplicate Scan.");
-        try
-        {
-            await NetworkService.SendDuplicateScanError
-            (
-                ScannerAddress: Output.Address,
-                Duration: 15
-            );
-        }
-        // the connection was refused (not found or unavailable)
-        catch (ArgumentException)
-        {
-            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
-        }
-        // the message failed to send due to a system issue
-        catch (SystemException)
-        {
-            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
-        }
-    }
-
-    /// <summary>
-    /// Logs a console message stating that Output's Part was not acceptable by its Process.
-    /// Additionally sends a matching message to the Scanner that created the Scan.
-    /// </summary>
-    /// <param name="Output"></param>
-    /// <returns></returns>
-    private async Task LogInvalidPart(ScanOutput Output)
-    {
-        // log to the console and send a message to the Scanner
-        Logger.LogWarning("Invalid Part.");
-        try
-        {
-            await NetworkService.SendInvalidPartError
-            (
-                ScannerAddress: Output.Address,
-                Duration: 15
-            );
-        }
-        // the connection was refused (not found or unavailable)
-        catch (ArgumentException)
-        {
-            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
-        }
-        // the message failed to send due to a system issue
-        catch (SystemException)
-        {
-            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
+            Logger.LogError($"\tFailed to connect to the Scanner at {New.ScanAddress}.");
         }
     }
 
@@ -167,28 +110,16 @@ public class Worker : BackgroundService
                     {
                         continue;
                     }
-                    // perform validations (unique; previous process scanned; accepted part)
-                    bool Unique = await ScanValidationService.ValidateUniqueScan(_output, ScansFromDatabase);
-                    bool PreviousScan = await ScanValidationService.ValidatePreviousProcess(_output, ScansFromDatabase);
-                    bool ScannablePart = await PartValidationService.ValidatePartForProcess(_output.Part, _output.Process);
-                    // check results of validations
-                    if (!Unique)
+                    // perform validations (unique; previous process scanned; accepted part; process flow; valid fields)
+                    ValidationFailure ScanValidation = await ScanValidationService.Validate(_output, ScansFromDatabase);
+                    // if the ScanOutput was not accepted, perform logging and messaging
+                    if (ScanValidation != ValidationFailure.Accepted)
                     {
-                        await LogDuplicateScan(_output);
-                        continue;
-                    }
-                    else if (!PreviousScan)
-                    {
-                        await LogMissingPreviousScan(_output);
-                        continue;
-                    }
-                    else if (!ScannablePart)
-                    {
-                        await LogInvalidPart(_output);
+                        await CommunicateFailedScanValidation(_output, ScanValidation);
                         continue;
                     }
                     // the Scan was valid; insert it into the Db
-                        Scan ScanToCreate = _output.ToScan();
+                    Scan ScanToCreate = _output.ToScan();
                     bool Created;
                     try
                     {
