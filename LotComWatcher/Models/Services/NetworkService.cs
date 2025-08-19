@@ -4,7 +4,10 @@ using System.Text;
 
 namespace LotComWatcher.Models.Services;
 
-public sealed class NetworkService
+/// <summary>
+/// Provides methods to communicate with Scanners over TCP network connections.
+/// </summary>
+public static class NetworkService
 {
     /// <summary>
     /// Sets the default communication port for sending messages to the Cognex Scanners.
@@ -47,14 +50,6 @@ public sealed class NetworkService
         }
         // connection was established without exceptions
         return true;
-    }
-
-    /// <summary>
-    /// Creates a NetworkService object that enables communication over TCP networks.
-    /// </summary>
-    public NetworkService()
-    {
-        
     }
 
     /// <summary>
@@ -125,7 +120,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
+    public static async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -157,7 +152,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, IEnumerable<int> PreviousProcess)
+    public static async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, IEnumerable<int> PreviousProcess)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -188,7 +183,7 @@ public sealed class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
+    public static async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -197,6 +192,37 @@ public sealed class NetworkService
             if (Sent)
             {
                 await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Duplicate Label scanned.\"\r\n");
+            }
+        }
+        catch (ArgumentException)
+        {
+            throw new SystemException("Could not establish a connection to the Scanner.");
+        }
+        catch (SystemException)
+        {
+            throw new SystemException("Failed to request a connection.");
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Attempts to send an Invalid Part error code to ScannerAddress.
+    /// Displays a notice on the Scanner's LCD screen for Duration seconds.
+    /// </summary>
+    /// <param name="ScannerAddress"></param>
+    /// <param name="Duration"></param>
+    /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
+    /// <exception cref="SystemException"></exception>
+    /// <exception cref="ArgumentException"></exception>
+    public static async Task<bool> SendInvalidPartError(IPAddress ScannerAddress, int Duration)
+    {
+        // send Data Validation Failure and Send Alert DMCCs to the Scanner
+        try
+        {
+            bool Sent = SendMessage(ScannerAddress, "||>OUTPUT.DATAVALID-FAIL\r\n").Result;
+            if (Sent)
+            {
+                await SendMessage(ScannerAddress, $"||>UI.SEND-ALERT {Duration} 2 \"Invalid Part Label scanned.\"\r\n");
             }
         }
         catch (ArgumentException)
