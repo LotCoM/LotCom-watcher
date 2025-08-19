@@ -49,40 +49,11 @@ public class Worker : BackgroundService
     }
 
     /// <summary>
-    /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
-    /// Logs the failed Tasks in the failed scans log file.
-    /// </summary>
-    /// <param name="ScanOutputs"></param>
-    /// <returns></returns>
-    private async Task<List<Task<ScanOutput>>> ClearFaultingParses(List<string> ScanOutputs)
-    {
-        List<Task<ScanOutput>> ParseTasks = [];
-        // check for faulting parses, remove them from the list, and log them
-        foreach (string _raw in ScanOutputs)
-        {
-            Task<ScanOutput?> Parse = ScanOutput.ParseCSV(_raw);
-            if (Parse is null)
-            {
-                continue;
-            }
-            else if (!Parse.IsFaulted)
-            {
-                ParseTasks.Add(Parse!);
-            }
-            else
-            {
-                await FailLogger.LogFailedScan(_raw, Parse.Exception);
-            }
-        }
-        return ParseTasks;
-    }
-
-    /// <summary>
     /// Reads the scan output file and parses a List of ScanOutput objects.
     /// </summary>
     /// <returns></returns>
     /// <exception cref="FileLoadException"></exception>
-    private async Task<ScanOutput[]> GetScans()
+    private async Task<ScanOutput?[]> GetScans()
     {
         // read the scan output file
         List<string> ScanOutputs;
@@ -97,12 +68,14 @@ public class Worker : BackgroundService
             return [];
         }
         // asynchronously parse each Raw Scan into a ScanOutput object
-        List<Task<ScanOutput>> ParseTasks = await ClearFaultingParses(ScanOutputs);
-        return await Task.WhenAll(ParseTasks);
+        IEnumerable<Task<ScanOutput?>> ParseTasks = ScanOutputs.Select(ScanOutput.ParseCSV);
+        ScanOutput?[] ParseResults = await Task.WhenAll(ParseTasks);
+        return ParseResults;
     }
 
     /// <summary>
     /// Logs a console message stating that Output was missing a Scan at the previous Process.
+    /// Additionally sends a matching message to the Scanner that created the Scan.
     /// </summary>
     /// <param name="Output"></param>
     /// <returns></returns>
@@ -133,6 +106,7 @@ public class Worker : BackgroundService
 
     /// <summary>
     /// Logs a console message stating that Output was a duplicate Scan.
+    /// Additionally sends a matching message to the Scanner that created the Scan.
     /// </summary>
     /// <param name="Output"></param>
     /// <returns></returns>
@@ -170,55 +144,85 @@ public class Worker : BackgroundService
         // run in a loop as long as the service is not stopped
         try
         {
+            // retrieve Scans once; Db manipulations will be mirrored in this list for runtime ref
+            IEnumerable<Scan>? ScansFromDatabase;
+            try
+            {
+                ScansFromDatabase = await ScanService.GetAllWithinRange(60, Agent);
+            }
+            // some database-generated issue
+            catch (HttpRequestException _ex)
+            {
+                throw new DatabaseException("Could not retreive Scans from the Database.", _ex);
+            }
+            // some formatting issue
+            catch (JsonException _ex)
+            {
+                throw new DatabaseException("Could not process JSON response.", _ex);
+            }
+            // no Scans retrieved
+            if (ScansFromDatabase is null)
+            {
+                throw new DatabaseException("Could not retreive Scans from the Database.");
+            }
             while (!stoppingToken.IsCancellationRequested)
             {
                 // read the Scan Output file; confirm parsing did not fail/return null
-                ScanOutput[] Outputs = await GetScans();
+                ScanOutput?[] Outputs = await GetScans();
                 if (Outputs is null || Outputs.Length < 1)
                 {
-                    Logger.LogInformation("No new Scans.");
                     continue;
                 }
                 // create scans in Database
-                foreach (ScanOutput _output in Outputs)
+                foreach (ScanOutput? _output in Outputs)
                 {
-                    // retrieve all of the Scans from the Database
-                    IEnumerable<Scan>? DbSet;
+                    // confirm that the output is non-null
+                    if (_output is null)
+                    {
+                        continue;
+                    }
+                    // perform validations (unique; previous process scanned)
+                    bool Unique = await ScanValidationService.ValidateUniqueScan(_output, ScansFromDatabase);
+                    bool PreviousScan = await ScanValidationService.ValidatePreviousProcess(_output, ScansFromDatabase);
+                    // check results of validations
+                    if (!Unique)
+                    {
+                        await LogDuplicateScan(_output);
+                        continue;
+                    }
+                    else if (!PreviousScan)
+                    {
+                        await LogMissingPreviousScan(_output);
+                        continue;
+                    }
+                    // the Scan was valid; insert it into the Db
+                    Scan ScanToCreate = _output.ToScan();
+                    bool Created;
                     try
                     {
-                        DbSet = await ScanService.GetAll(Agent);
+                        Created = await ScanService.Create(ScanToCreate, Agent);
                     }
                     // some database-generated issue
                     catch (HttpRequestException _ex)
                     {
-                        throw new DatabaseException("Could not retreive Scans from the Database.", _ex);
+                        throw new DatabaseException("Could not communicate with the Scan Database.", _ex);
                     }
                     // some formatting issue
                     catch (JsonException _ex)
                     {
                         throw new DatabaseException("Could not process JSON response.", _ex);
                     }
-                    // no Scans retrieved
-                    if (DbSet is null)
+                    // log the creation outcome
+                    if (Created)
                     {
-                        throw new DatabaseException("Could not retreive Scans from the Database.");
+                        Logger.LogInformation("Created new Scan entry.");
+                        // add the new Scan to the runtime list
+                        ScansFromDatabase = ScansFromDatabase.Append(ScanToCreate);
                     }
-                    // perform validations (unique; previous process scanned)
-                    bool Unique = await ScanValidationService.ValidateUniqueScan(_output, DbSet);
-                    bool PreviousScan = await ScanValidationService.ValidatePreviousProcess(_output, DbSet);
-                    // check results of validations
-                    if (!Unique)
+                    else
                     {
-                        await LogMissingPreviousScan(_output);
-                        continue;
+                        Logger.LogWarning($"Could not create Scan '{ScanToCreate.ToString}' in the Database.");
                     }
-                    else if (!PreviousScan)
-                    {
-                        await LogDuplicateScan(_output);
-                        continue;
-                    }
-                    // the Scan was valid
-                    Logger.LogInformation("Created new Scan entry.");
                 }
             }
         }
