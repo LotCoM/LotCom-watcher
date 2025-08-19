@@ -14,18 +14,17 @@ namespace LotComWatcher.Models.Datatypes;
 /// <remarks>
 /// Different from 'Scan', as 'ScanOutput' objects are potentially invalid for Database insertion.
 /// </remarks>
+/// <param name="ScanProcess"
 /// <param name="ScanDate"></param>
-/// <param name="Address"></param>
-/// <param name="Process"></param>
-/// <param name="Part"></param>
-/// <param name="VariableFields"></param>
-/// <param name="ProductionDate"></param>
-/// <param name="Quantity"></param>
-/// <param name="ProductionShift"></param>
-/// <param name="ProductionOperator"></param>
-/// <param name="FirstPartialDataSet"></param>
-/// <param name="SecondPartialDataSet"></param>
-public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, Part Part, VariableFieldSet VariableFields, DateTime ProductionDate, PartialDataSet PrimaryDataSet, PartialDataSet? FirstPartialDataSet = null, PartialDataSet? SecondPartialDataSet = null)
+/// <param name="ScanAddress"></param>
+/// <param name="LabelProcess"></param>
+/// <param name="LabelPart"></param>
+/// <param name="LabelVariableFields"></param>
+/// <param name="LabelProductionDate"></param>
+/// <param name="LabelPrimaryData"></param>
+/// <param name="LabelSecondaryData"></param>
+/// <param name="LabelTertiaryData"></param>
+public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAddress, Process LabelProcess, Part LabelPart, VariableFieldSet LabelVariableFields, DateTime LabelProductionDate, PartialDataSet LabelPrimaryData, PartialDataSet? LabelSecondaryData = null, PartialDataSet? LabelTertiaryData = null)
 {
     /// <summary>
     /// A UserAgent object that can be used to authorize API calls from this object.
@@ -33,49 +32,54 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
     private static UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
 
     /// <summary>
-    /// The Date and Time on which the ScanEvent was executed.
+    /// The Process that produced the ScanOutput.
+    /// </summary>
+    public Process ScanProcess = ScanProcess;
+
+    /// <summary>
+    /// The Date and Time on which the ScanOutput was produced.
     /// </summary>
     public DateTime ScanDate = ScanDate;
 
     /// <summary>
-    /// The IP Address of the Scanner producing the ScanEvent.
+    /// The IP Address of the Scanner that produced the ScanOutput.
     /// </summary>
-    public IPAddress Address = Address;
+    public IPAddress ScanAddress = ScanAddress;
 
     /// <summary>
     /// The Process that printed the scanned Label.
     /// </summary>
-    public Process Process = Process;
+    public Process LabelProcess = LabelProcess;
 
     /// <summary>
     ///  The Part that the scanned Label was printed for.
     /// </summary>
-    public Part Part = Part;
+    public Part LabelPart = LabelPart;
 
     /// <summary>
     /// The variably-required fields of manufacturing data assigned to the Basket that the scanned Label was applied to.
     /// </summary>
-    public VariableFieldSet VariableFields = VariableFields;
+    public VariableFieldSet LabelVariableFields = LabelVariableFields;
 
     /// <summary>
     /// The Date and Time at which the scanned Label was produced/printed.
     /// </summary>
-    public DateTime ProductionDate = ProductionDate;
+    public DateTime LabelProductionDate = LabelProductionDate;
 
     /// <summary>
     /// The initial Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet PrimaryDataSet = PrimaryDataSet;
+    public PartialDataSet LabelPrimaryData = LabelPrimaryData;
 
     /// <summary>
     /// The first optional, additional Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet? FirstPartialDataSet = FirstPartialDataSet;
+    public PartialDataSet? LabelSecondaryData = LabelSecondaryData;
 
     /// <summary>
     /// The second optional, additional Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet? SecondPartialDataSet = SecondPartialDataSet;
+    public PartialDataSet? LabelTertiaryData = LabelTertiaryData;
 
     /// <summary>
     /// Attempts to find a Process that matches ProcessFullName in the Process Database.
@@ -163,22 +167,29 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
     {
         // split the line by the comma character
         string[] SplitLine = CSVLine.Split(',');
-        // attempt to retrieve the ScanOutput's Process and Part
-        Process? Process = await RetrieveProcess(SplitLine[2]);
-        if (Process is null)
+        // attempt to retrieve the ScanOutput's ScanProcess
+        Process? ScanProcess = await RetrieveProcess(SplitLine[0]);
+        if (ScanProcess is null)
         {
-            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[2]}'.");
+            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[0]}'.");
         }
-        Part? Part = await RetrievePart(SplitLine[3], Process.Id);
-        if (Part is null)
+        // attempt to retrieve the ScanOutput's LabelProcess
+        Process? LabelProcess = await RetrieveProcess(SplitLine[3]);
+        if (LabelProcess is null)
         {
-            throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[3]}'.");
+            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[3]}'.");
+        }
+        // attempt to retrieve the ScanOutput's LabelPart
+        Part? LabelPart = await RetrievePart(SplitLine[4], LabelProcess.Id);
+        if (LabelPart is null)
+        {
+            throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[4]}'.");
         }
         // parse a VariableFieldSet from the line
         VariableFieldSet VariableFields;
         try
         {
-            VariableFields = VariableFieldSet.ParseCSV(SplitLine[6..^3], Process.RequiredFields);
+            VariableFields = VariableFieldSet.ParseCSV(SplitLine[7..^3], LabelProcess.RequiredFields);
         }
         catch (ArgumentException)
         {
@@ -188,7 +199,7 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
         List<PartialDataSet?> Partials;
         try
         {
-            Partials = PartialDataSet.Parse(SplitLine[5], SplitLine[^2], SplitLine[^1])!;
+            Partials = PartialDataSet.Parse(SplitLine[6], SplitLine[^2], SplitLine[^1])!;
         }
         catch (ArgumentException)
         {
@@ -209,15 +220,16 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
         {
             return new ScanOutput
             (
-                ScanDate: DateTime.ParseExact(SplitLine[0], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-                Address: IPAddress.Parse(SplitLine[1]),
-                Process: Process,
-                Part: Part,
-                VariableFields: VariableFields,
-                ProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-                PrimaryDataSet: Partials[0]!,
-                FirstPartialDataSet: Partials[1],
-                SecondPartialDataSet: Partials[2]
+                ScanProcess: ScanProcess,
+                ScanDate: DateTime.ParseExact(SplitLine[1], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
+                ScanAddress: IPAddress.Parse(SplitLine[2]),
+                LabelProcess: LabelProcess,
+                LabelPart: LabelPart,
+                LabelVariableFields: VariableFields,
+                LabelProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
+                LabelPrimaryData: Partials[0]!,
+                LabelSecondaryData: Partials[1],
+                LabelTertiaryData: Partials[2]
             );
         }
         // there was a null argument passed to one of the Parses
@@ -251,15 +263,15 @@ public class ScanOutput(DateTime ScanDate, IPAddress Address, Process Process, P
         return new Scan
         (
             0,
-            Process,
+            LabelProcess,
             ScanDate,
-            Address,
-            Part,
-            VariableFields,
-            ProductionDate,
-            PrimaryDataSet,
-            FirstPartialDataSet,
-            SecondPartialDataSet
+            ScanAddress,
+            LabelPart,
+            LabelVariableFields,
+            LabelProductionDate,
+            LabelPrimaryData,
+            LabelSecondaryData,
+            LabelTertiaryData
         );
     }
 }
