@@ -263,9 +263,10 @@ public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAd
         return new Scan
         (
             0,
-            LabelProcess,
+            ScanProcess,
             ScanDate,
             ScanAddress,
+            LabelProcess,
             LabelPart,
             LabelVariableFields,
             LabelProductionDate,
