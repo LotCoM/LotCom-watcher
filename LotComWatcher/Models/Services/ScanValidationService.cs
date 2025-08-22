@@ -1,4 +1,4 @@
-using LotCom.Types;
+using LotCom.Core.Models;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
 

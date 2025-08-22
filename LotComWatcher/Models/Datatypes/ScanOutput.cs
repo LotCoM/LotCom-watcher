@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Net;
-using LotCom.Exceptions;
-using LotCom.Types;
-using LotCom.DataAccess.Services;
-using LotCom.DataAccess;
+using LotCom.Core.Exceptions;
+using LotCom.Core.Models;
+using LotCom.Database.Auth;
+using LotCom.Database.Services;
 using Newtonsoft.Json;
 
 namespace LotComWatcher.Models.Datatypes;

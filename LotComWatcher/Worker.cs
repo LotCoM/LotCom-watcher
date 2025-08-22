@@ -1,7 +1,7 @@
-using LotCom.DataAccess;
-using LotCom.DataAccess.Services;
-using LotCom.Exceptions;
-using LotCom.Types;
+using LotCom.Core.Exceptions;
+using LotCom.Core.Models;
+using LotCom.Database.Auth;
+using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
 using LotComWatcher.Models.Extensions;
