@@ -96,6 +96,9 @@ public class Worker : BackgroundService
             }
             while (!stoppingToken.IsCancellationRequested)
             {
+                // prune older than 60 days scans here
+                ScansFromDatabase = ScansFromDatabase
+                    .Where(x => x.CompareDateWithinRange(60, DateTime.Now));
                 // read the Scan Output file; confirm parsing did not fail/return null
                 IEnumerable<ScanOutput> Outputs = await ReaderService.ReadNewScans();
                 if (!Outputs.Any())
