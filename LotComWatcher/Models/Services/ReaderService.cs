@@ -1,36 +1,64 @@
+using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
 
 namespace LotComWatcher.Models.Services;
 
-public sealed class ReaderService
+/// <summary>
+/// Provides reading methods to pull Scanner output from the output file.
+/// </summary>
+public static class ReaderService
 {
     /// <summary>
     /// The raw output file that contains scan results from LotCom Scanners.
     /// </summary>
-    private const string OutputFile = @"\\144.133.122.1\Lot Control Management\SCAN-OUTPUT.txt";
+    private const string OutputFile = @"C:\LotCom\scan_out.txt";
 
     /// <summary>
-    /// Provides reading capabilities on the Scanner output file.
+    /// Parses string-based Scan outputs to an IEnumerable of ScanOutput objects.
     /// </summary>
-    public ReaderService()
+    /// <returns></returns>
+    private static async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans)
     {
-
+        // check for faulting parses and remove them from the enumerable
+        IEnumerable<Task<ScanOutput>> ParseTasks = [];
+        foreach (string _raw in RawScans)
+        {
+            Task<ScanOutput>? Parse;
+            try
+            {
+                Parse = ScanOutput.ParseCSV(_raw);
+            }
+            catch
+            {
+                Parse = null;
+            }
+            if (Parse is null)
+            {
+                continue;
+            }
+            else if (!Parse.IsFaulted)
+            {
+                ParseTasks = ParseTasks.Append(Parse!);
+            }
+        }
+        // asynchronously parse each Raw Scan into a ScanOutput object
+        ScanOutput[] ParseResults = await Task.WhenAll(ParseTasks);
+        return ParseResults;
     }
 
     /// <summary>
-    /// Attempts to read and return all of the Lines in the Scan Output File.
+    /// Attempts to read and return all of the ScanOutputs in the Scan Output File.
     /// </summary>
-    /// <returns>A List of Scan results as strings.</returns>
+    /// <returns>An IEnumerable of Scan results as ScanOutput objects.</returns>
     /// <exception cref="OutputFileAccessException"></exception>
-    public async Task<List<string>> Read()
+    public static async Task<IEnumerable<ScanOutput>> ReadNewScans()
     {
         // attempt to read the Scan Output file and throw an access exception if the read fails
+        IEnumerable<string> RawScans;
         try
         {
-            // save the Raw Scans from the file, clear its contents, and return the Scans
-            string[] RawScans = await File.ReadAllLinesAsync(OutputFile);
-            await File.WriteAllTextAsync(OutputFile, "");
-            return RawScans.ToList();
+            // save the Raw Scans from the file
+            RawScans = await File.ReadAllLinesAsync(OutputFile);
         }
         catch (OperationCanceledException _ex)
         {
@@ -41,5 +69,10 @@ public sealed class ReaderService
                 + $"\t{_ex.StackTrace}"
             );
         }
+        // parse ScanOutput objects from the Raw Scans
+        IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans);
+        // clear the file contents and return new Scan outputs
+        await File.WriteAllTextAsync(OutputFile, "");
+        return ParsedScans;
     }
 }
