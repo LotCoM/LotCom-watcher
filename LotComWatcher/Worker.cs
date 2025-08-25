@@ -1,7 +1,12 @@
-using LotComWatcher.Models.Datasources;
+using LotCom.Core.Exceptions;
+using LotCom.Core.Models;
+using LotCom.Database.Auth;
+using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
+using LotComWatcher.Models.Extensions;
 using LotComWatcher.Models.Services;
+using Newtonsoft.Json;
 
 namespace LotComWatcher;
 
@@ -13,138 +18,48 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> Logger;
 
     /// <summary>
-    /// Reader service that provides resillient asynchronous reading of files to the service.
+    /// A UserAgent object that can be used to authorize API calls from this object.
     /// </summary>
-    private readonly ReaderService Reader;
-
-    /// <summary>
-    /// Failed Scan Service that provides uniform logging of Scan Output processing steps that failed.
-    /// </summary>
-    private readonly FailedScanService FailLogger;
-
-    /// <summary>
-    /// Network service that provides uniform Scanner messaging capabilities.
-    /// </summary>
-    private readonly NetworkService Network;
+    private readonly UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
 
     /// <summary>
     /// Creates a Service Worker that performs the Service's main event/work loop.
     /// </summary>
     /// <param name="Logger"></param>
-    /// <param name="Reader"></param>
-    public Worker(ILogger<Worker> Logger, ReaderService Reader, FailedScanService FailLogger, NetworkService Network)
+    public Worker(ILogger<Worker> Logger)
     {
         this.Logger = Logger;
-        this.Reader = Reader;
-        this.FailLogger = FailLogger;
-        this.Network = Network;
     }
 
     /// <summary>
-    /// Attempts to create a Parse task from each of the Raw Scans and only returns the valid ones.
-    /// Logs the failed Tasks in the failed scans log file.
+    /// Logs and communicates a failed Scan validation to the service log and Scanner that produced the Scan.
     /// </summary>
-    /// <param name="ScanOutputs"></param>
+    /// <param name="New"></param>
+    /// <param name="Fault"></param>
     /// <returns></returns>
-    private async Task<List<Task<ScanOutput>>> ClearFaultingParses(List<string> ScanOutputs)
+    private async Task CommunicateFailedScanValidation(ScanOutput New, ValidationFailure Fault)
     {
-        List<Task<ScanOutput>> ParseTasks = [];
-        // check for faulting parses, remove them from the list, and log them
-        foreach (string _raw in ScanOutputs)
-        {
-            Task<ScanOutput> Parse = ScanOutput.ParseCSV(_raw);
-            if (!Parse.IsFaulted)
-            {
-                ParseTasks.Add(Parse);
-            }
-            else
-            {
-                await FailLogger.LogFailedScan(_raw, Parse.Exception);
-            }
-        }
-        return ParseTasks;
-    }
-
-    /// <summary>
-    /// Reads the scan output file and parses a List of ScanOutput objects.
-    /// </summary>
-    /// <returns></returns>
-    /// <exception cref="FileLoadException"></exception>
-    private async Task<ScanOutput[]> GetScans()
-    {
-        // read the scan output file
-        List<string> ScanOutputs;
+        // log the Failure in the service
+        Logger.LogWarning($"{ValidationFailureExtensions.ToMessage(Fault)}.");
+        // send a message to the Scanner
         try
         {
-            ScanOutputs = await Reader.Read();
-        }
-        catch (OperationCanceledException _ex)
-        {
-            // log the exception and exit the Service
-            Logger.LogError(_ex, "{Message}", _ex.Message);
-            return [];
-        }
-        // asynchronously parse each Raw Scan into a ScanOutput object
-        List<Task<ScanOutput>> ParseTasks = await ClearFaultingParses(ScanOutputs);
-        return await Task.WhenAll(ParseTasks);
-    }
-
-    /// <summary>
-    /// Logs a console message stating that Output was missing a Scan at the previous Process.
-    /// </summary>
-    /// <param name="Output"></param>
-    /// <returns></returns>
-    private async Task LogMissingPreviousScan(ScanOutput Output)
-    {
-        // log to the console and send a message to the Scanner
-        Logger.LogWarning("Missing Scan in previous Process.");
-        try
-        {
-            await Network.SendMissingPreviousScanError
+            await NetworkService.SendScanValidationError
             (
-                ScannerAddress: Output.Address,
-                Duration: 15,
-                PreviousProcess: Output.Process.PreviousProcesses!
+                New,
+                15,
+                Fault
             );
         }
         // the connection was refused (not found or unavailable)
         catch (ArgumentException)
         {
-            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
+            Logger.LogError($"\tThe Scanner at {New.ScanAddress} refused to produce a connection.");
         }
         // the message failed to send due to a system issue
         catch (SystemException)
         {
-            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
-        }
-    }
-
-    /// <summary>
-    /// Logs a console message stating that Output was a duplicate Scan.
-    /// </summary>
-    /// <param name="Output"></param>
-    /// <returns></returns>
-    private async Task LogDuplicateScan(ScanOutput Output)
-    {
-        // log to the console and send a message to the Scanner
-        Logger.LogWarning("Duplicate Scan.");
-        try
-        {
-            await Network.SendDuplicateScanError
-            (
-                ScannerAddress: Output.Address,
-                Duration: 15
-            );
-        }
-        // the connection was refused (not found or unavailable)
-        catch (ArgumentException)
-        {
-            Logger.LogError($"\tThe Scanner at {Output.Address} refused to produce a connection.");
-        }
-        // the message failed to send due to a system issue
-        catch (SystemException)
-        {
-            Logger.LogError($"\tFailed to connect to the Scanner at {Output.Address}.");
+            Logger.LogError($"\tFailed to connect to the Scanner at {New.ScanAddress}.");
         }
     }
 
@@ -158,41 +73,82 @@ public class Worker : BackgroundService
         // run in a loop as long as the service is not stopped
         try
         {
+            // retrieve Scans once; Db manipulations will be mirrored in this list for runtime ref
+            IEnumerable<Scan>? ScansFromDatabase;
+            try
+            {
+                ScansFromDatabase = await ScanService.GetAllWithinRange(60, Agent);
+            }
+            // some database-generated issue
+            catch (HttpRequestException _ex)
+            {
+                throw new DatabaseException("Could not retreive Scans from the Database.", _ex);
+            }
+            // some formatting issue
+            catch (JsonException _ex)
+            {
+                throw new DatabaseException("Could not process JSON response.", _ex);
+            }
+            // no Scans retrieved
+            if (ScansFromDatabase is null)
+            {
+                throw new DatabaseException("Could not retreive Scans from the Database.");
+            }
             while (!stoppingToken.IsCancellationRequested)
             {
+                // prune older than 60 days scans here
+                ScansFromDatabase = ScansFromDatabase
+                    .Where(x => x.CompareDateWithinRange(60, DateTime.Now));
                 // read the Scan Output file; confirm parsing did not fail/return null
-                ScanOutput[] Outputs = await GetScans();
-                if (Outputs is null || Outputs.Length < 1)
+                IEnumerable<ScanOutput> Outputs = await ReaderService.ReadNewScans();
+                if (!Outputs.Any())
                 {
-                    Logger.LogInformation("No new Scans.");
                     continue;
                 }
                 // create scans in Database
-                DatabaseContext? DbContext = null;
                 foreach (ScanOutput _output in Outputs)
                 {
-                    // attempt to use the same DatabaseContext as the previous iteration
-                    if (DbContext is null || !DbContext.Process.FullName.Equals(_output.Process.FullName))
+                    // confirm that the output is non-null
+                    if (_output is null)
                     {
-                        // db context is not for the needed Process; make a new one
-                        DbContext = new DatabaseContext(_output.Process);
-                    }
-                    // perform CRUD create operation and record the message from the DbContext
-                    InsertionMessage Message = await DbContext.CreateScan(_output);
-                    // no scan occurred at the previous process
-                    if (Message == InsertionMessage.MissingPrevious)
-                    {
-                        await LogMissingPreviousScan(_output);
                         continue;
                     }
-                    // the Label was already scanned at this Process
-                    else if (Message == InsertionMessage.DuplicateScan)
+                    // perform validations (unique; previous process scanned; accepted part; process flow; valid fields)
+                    ValidationFailure ScanValidation = await ScanValidationService.Validate(_output, ScansFromDatabase);
+                    // if the ScanOutput was not accepted, perform logging and messaging
+                    if (ScanValidation != ValidationFailure.Accepted)
                     {
-                        await LogDuplicateScan(_output);
+                        await CommunicateFailedScanValidation(_output, ScanValidation);
                         continue;
                     }
-                    // the Scan was valid
-                    Logger.LogInformation("Created new Scan entry.");
+                    // the Scan was valid; insert it into the Db
+                    Scan ScanToCreate = _output.ToScan();
+                    bool Created;
+                    try
+                    {
+                        Created = await ScanService.Create(ScanToCreate, Agent);
+                    }
+                    // some database-generated issue
+                    catch (HttpRequestException _ex)
+                    {
+                        throw new DatabaseException("Could not communicate with the Scan Database.", _ex);
+                    }
+                    // some formatting issue
+                    catch (JsonException _ex)
+                    {
+                        throw new DatabaseException("Could not process JSON response.", _ex);
+                    }
+                    // log the creation outcome
+                    if (Created)
+                    {
+                        Logger.LogInformation("Created new Scan entry.");
+                        // add the new Scan to the runtime list
+                        ScansFromDatabase = ScansFromDatabase.Append(ScanToCreate);
+                    }
+                    else
+                    {
+                        Logger.LogWarning($"Could not create Scan '{ScanToCreate.ToString}' in the Database.");
+                    }
                 }
             }
         }
