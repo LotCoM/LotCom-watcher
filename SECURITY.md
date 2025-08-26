@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The following versions of LotCoM Watcher are
+The following versions of LotCom Watcher are
 currently being supported with security updates.
 
 | Version | Supported          |
@@ -12,6 +12,6 @@ currently being supported with security updates.
 
 ## Reporting a Vulnerability
 
-If you believe there is a security risk in LotCoM Watcher, please email the developer(s).
+If you believe there is a security risk in LotCom Watcher, please email the developer(s).
 
 masonritchason@gmail.com | ritchasonm@yna.us
