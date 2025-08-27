@@ -27,11 +27,6 @@ namespace LotComWatcher.Models.Datatypes;
 public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAddress, Process LabelProcess, Part LabelPart, VariableFieldSet LabelVariableFields, DateTime LabelProductionDate, PartialDataSet LabelPrimaryData, PartialDataSet? LabelSecondaryData = null, PartialDataSet? LabelTertiaryData = null)
 {
     /// <summary>
-    /// A UserAgent object that can be used to authorize API calls from this object.
-    /// </summary>
-    private static UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
-
-    /// <summary>
     /// The Process that produced the ScanOutput.
     /// </summary>
     public Process ScanProcess = ScanProcess;
@@ -87,13 +82,13 @@ public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAd
     /// <param name="ProcessFullName"></param>
     /// <returns></returns>
     /// <exception cref="DatabaseException"></exception>
-    private static async Task<Process?> RetrieveProcess(string ProcessFullName)
+    private static async Task<Process?> RetrieveProcess(string ProcessFullName, HttpClient Client, UserAgent Agent)
     {
         // retrieve all Processes from the Database
         IEnumerable<Process>? ProcessesFromDatabase;
         try
         {
-            ProcessesFromDatabase = await ProcessService.GetAll(Agent);
+            ProcessesFromDatabase = await ProcessService.GetAll(Client, Agent);
         }
         // some database-generated issue
         catch (HttpRequestException _ex)
@@ -124,13 +119,13 @@ public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAd
     /// <param name="ScannedBy"></param>
     /// <returns></returns>
     /// <exception cref="DatabaseException"></exception>
-    private static async Task<Part?> RetrievePart(string PartNumber, int ScannedBy)
+    private static async Task<Part?> RetrievePart(string PartNumber, int ScannedBy, HttpClient Client, UserAgent Agent)
     {
         // retrieve all Parts from the Database
         IEnumerable<Part>? PartsFromDatabase;
         try
         {
-            PartsFromDatabase = await PartService.GetPrintedByProcess(ScannedBy, Agent);
+            PartsFromDatabase = await PartService.GetPrintedByProcess(ScannedBy, Client, Agent);
         }
         // some database-generated issue
         catch (HttpRequestException _ex)
@@ -163,24 +158,24 @@ public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAd
     /// <exception cref="FormatException"></exception>
     /// <exception cref="DatabaseException"></exception>
     /// <exception cref="OverflowException"></exception>
-    public static async Task<ScanOutput> ParseCSV(string CSVLine)
+    public static async Task<ScanOutput> ParseCSV(string CSVLine, HttpClient Client, UserAgent Agent)
     {
         // split the line by the comma character
         string[] SplitLine = CSVLine.Split(',');
         // attempt to retrieve the ScanOutput's ScanProcess
-        Process? ScanProcess = await RetrieveProcess(SplitLine[0]);
+        Process? ScanProcess = await RetrieveProcess(SplitLine[0], Client, Agent);
         if (ScanProcess is null)
         {
             throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[0]}'.");
         }
         // attempt to retrieve the ScanOutput's LabelProcess
-        Process? LabelProcess = await RetrieveProcess(SplitLine[3]);
+        Process? LabelProcess = await RetrieveProcess(SplitLine[3], Client, Agent);
         if (LabelProcess is null)
         {
             throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[3]}'.");
         }
         // attempt to retrieve the ScanOutput's LabelPart
-        Part? LabelPart = await RetrievePart(SplitLine[4], LabelProcess.Id);
+        Part? LabelPart = await RetrievePart(SplitLine[4], LabelProcess.Id, Client, Agent);
         if (LabelPart is null)
         {
             throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[4]}'.");

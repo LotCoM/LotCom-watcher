@@ -19,3 +19,9 @@
 - `ReaderService` outputs process-ready `ScanOutput` objects and reads from a new location.
 - `ScanValidationService` performs unique scan, valid process, valid part, existing previous process scan, and required field validations.
 - `Worker.cs` now operates on the last 60 days of Scans instead of the entire database (much faster).
+
+## `1.0.21`
+#### Hotfix
+- [`feat/1.0.21`](https://github.com/LotCom/LotCom-watcher/pull/36):
+  - Integrate with change to `DAL` in **LotCom Libraries** that requires the LotCom apps to provide their own `HttpClient`.
+  - Add dependency injection of `HttpClient` and `UserAgent` services.
