@@ -18,17 +18,24 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> Logger;
 
     /// <summary>
-    /// A UserAgent object that can be used to authorize API calls from this object.
+    /// UserAgent used to authenticate API calls in the LotCom system.
     /// </summary>
-    private readonly UserAgent Agent = UserAgentFactory.CreateWatcherAgent(System.Reflection.Assembly.GetEntryAssembly()!.GetName().Version!.ToString());
+    private readonly UserAgent Agent;
+
+    /// <summary>
+    /// HttpClient configured to communicate with the LotCom system.
+    /// </summary>
+    private readonly HttpClient Http;
 
     /// <summary>
     /// Creates a Service Worker that performs the Service's main event/work loop.
     /// </summary>
     /// <param name="Logger"></param>
-    public Worker(ILogger<Worker> Logger)
+    public Worker(ILogger<Worker> Logger, HttpClient Http, UserAgent Agent)
     {
         this.Logger = Logger;
+        this.Http = Http;
+        this.Agent = Agent;
     }
 
     /// <summary>
@@ -77,7 +84,7 @@ public class Worker : BackgroundService
             IEnumerable<Scan>? ScansFromDatabase;
             try
             {
-                ScansFromDatabase = await ScanService.GetAllWithinRange(60, Agent);
+                ScansFromDatabase = await ScanService.GetAllWithinRange(60, Http, Agent);
             }
             // some database-generated issue
             catch (HttpRequestException _ex)
@@ -100,7 +107,7 @@ public class Worker : BackgroundService
                 ScansFromDatabase = ScansFromDatabase
                     .Where(x => x.CompareDateWithinRange(60, DateTime.Now));
                 // read the Scan Output file; confirm parsing did not fail/return null
-                IEnumerable<ScanOutput> Outputs = await ReaderService.ReadNewScans();
+                IEnumerable<ScanOutput> Outputs = await ReaderService.ReadNewScans(Http, Agent);
                 if (!Outputs.Any())
                 {
                     continue;
@@ -126,7 +133,7 @@ public class Worker : BackgroundService
                     bool Created;
                     try
                     {
-                        Created = await ScanService.Create(ScanToCreate, Agent);
+                        Created = await ScanService.Create(ScanToCreate, Http, Agent);
                     }
                     // some database-generated issue
                     catch (HttpRequestException _ex)
