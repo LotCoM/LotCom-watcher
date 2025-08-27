@@ -1,3 +1,4 @@
+using LotCom.Database.Auth;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
 
@@ -17,7 +18,7 @@ public static class ReaderService
     /// Parses string-based Scan outputs to an IEnumerable of ScanOutput objects.
     /// </summary>
     /// <returns></returns>
-    private static async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans)
+    private static async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans, HttpClient Client, UserAgent Agent)
     {
         // check for faulting parses and remove them from the enumerable
         IEnumerable<Task<ScanOutput>> ParseTasks = [];
@@ -26,7 +27,7 @@ public static class ReaderService
             Task<ScanOutput>? Parse;
             try
             {
-                Parse = ScanOutput.ParseCSV(_raw);
+                Parse = ScanOutput.ParseCSV(_raw, Client, Agent);
             }
             catch
             {
@@ -51,7 +52,7 @@ public static class ReaderService
     /// </summary>
     /// <returns>An IEnumerable of Scan results as ScanOutput objects.</returns>
     /// <exception cref="OutputFileAccessException"></exception>
-    public static async Task<IEnumerable<ScanOutput>> ReadNewScans()
+    public static async Task<IEnumerable<ScanOutput>> ReadNewScans(HttpClient Client, UserAgent Agent)
     {
         // attempt to read the Scan Output file and throw an access exception if the read fails
         IEnumerable<string> RawScans;
@@ -70,7 +71,7 @@ public static class ReaderService
             );
         }
         // parse ScanOutput objects from the Raw Scans
-        IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans);
+        IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans, Client, Agent);
         // clear the file contents and return new Scan outputs
         await File.WriteAllTextAsync(OutputFile, "");
         return ParsedScans;
