@@ -22,6 +22,6 @@
 
 ## `1.0.21`
 #### Hotfix
-- [`feat/1.0.21`](https://github.com/LotCom/LotCom-watcher/pull/36):
+- [`feat/1.0.21`](https://github.com/Yamada-North-America/LotCom-watcher/pull/36):
   - Integrate with change to `DAL` in **LotCom Libraries** that requires the LotCom apps to provide their own `HttpClient`.
   - Add dependency injection of `HttpClient` and `UserAgent` services.
