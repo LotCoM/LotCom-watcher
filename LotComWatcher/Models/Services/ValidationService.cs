@@ -1,6 +1,5 @@
 using LotCom.Core.Models;
 using LotCom.Database.Auth;
-using LotCom.Database.Caching;
 using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
