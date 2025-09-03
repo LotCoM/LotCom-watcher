@@ -1,6 +1,11 @@
+using LotCom.Core.Exceptions;
+using LotCom.Core.Models;
 using LotCom.Database.Auth;
+using LotCom.Database.Caching;
+using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
+using Newtonsoft.Json;
 
 namespace LotComWatcher.Models.Services;
 
@@ -15,6 +20,16 @@ public static class ReaderService
     private const string OutputFile = @"C:\LotCom\scan_out.txt";
 
     /// <summary>
+    /// Provides a cache mechanism for storing retrieved Processes.
+    /// </summary>
+    private static ProcessCache _processCache = new ProcessCache();
+
+    /// <summary>
+    /// Provides a cache mechanism for storing retrieved Parts.
+    /// </summary>
+    private static PartCache _partCache = new PartCache();
+
+    /// <summary>
     /// Parses string-based Scan outputs to an IEnumerable of ScanOutput objects.
     /// </summary>
     /// <returns></returns>
@@ -27,7 +42,7 @@ public static class ReaderService
             Task<ScanOutput>? Parse;
             try
             {
-                Parse = ScanOutput.ParseCSV(_raw, Client, Agent);
+                Parse = ScanOutput.ParseCSV(_raw, _processCache, _partCache, Client, Agent);
             }
             catch
             {
@@ -54,6 +69,49 @@ public static class ReaderService
     /// <exception cref="OutputFileAccessException"></exception>
     public static async Task<IEnumerable<ScanOutput>> ReadNewScans(HttpClient Client, UserAgent Agent)
     {
+        // populate caches with initial Process and Part data
+        IEnumerable<Process>? ProcessesFromDatabase;
+        try
+        {
+            ProcessesFromDatabase = await ProcessService.GetAll(Client, Agent);
+        }
+        // some database-generated issue
+        catch (HttpRequestException _ex)
+        {
+            throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
+        }
+        // some formatting issue
+        catch (JsonException _ex)
+        {
+            throw new DatabaseException("Could not process JSON response.", _ex);
+        }
+        // no Processes retrieved
+        if (ProcessesFromDatabase is null)
+        {
+            ProcessesFromDatabase = [];
+        }
+        IEnumerable<Part>? PartsFromDatabase;
+        try
+        {
+            PartsFromDatabase = await PartService.GetAll(Client, Agent);
+        }
+        // some database-generated issue
+        catch (HttpRequestException _ex)
+        {
+            throw new DatabaseException("Could not retreive Parts from the Database.", _ex);
+        }
+        // some formatting issue
+        catch (JsonException _ex)
+        {
+            throw new DatabaseException("Could not process JSON response.", _ex);
+        }
+        // no Parts retrieved
+        if (PartsFromDatabase is null)
+        {
+            PartsFromDatabase = [];
+        }
+        _processCache.AddRange(ProcessesFromDatabase);
+        _partCache.AddRange(PartsFromDatabase);
         // attempt to read the Scan Output file and throw an access exception if the read fails
         IEnumerable<string> RawScans;
         try
@@ -72,8 +130,17 @@ public static class ReaderService
         }
         // parse ScanOutput objects from the Raw Scans
         IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans, Client, Agent);
-        // clear the file contents and return new Scan outputs
-        await File.WriteAllTextAsync(OutputFile, "");
         return ParsedScans;
+    }
+
+    /// <summary>
+    /// Clears the contents of the configured Scanner Output file.
+    /// </summary>
+    /// <returns></returns>
+    public static async Task ClearOutputs()
+    {
+        // clear the file contents
+        await File.WriteAllTextAsync(OutputFile, "");
+        return;
     }
 }
