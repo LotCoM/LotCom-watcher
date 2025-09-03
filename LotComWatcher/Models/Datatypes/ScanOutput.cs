@@ -1,10 +1,5 @@
-using System.Globalization;
 using System.Net;
-using LotCom.Core.Exceptions;
 using LotCom.Core.Models;
-using LotCom.Database.Auth;
-using LotCom.Database.Services;
-using Newtonsoft.Json;
 
 namespace LotComWatcher.Models.Datatypes;
 
@@ -24,229 +19,83 @@ namespace LotComWatcher.Models.Datatypes;
 /// <param name="LabelPrimaryData"></param>
 /// <param name="LabelSecondaryData"></param>
 /// <param name="LabelTertiaryData"></param>
-public class ScanOutput(Process ScanProcess, DateTime ScanDate, IPAddress ScanAddress, Process LabelProcess, Part LabelPart, VariableFieldSet LabelVariableFields, DateTime LabelProductionDate, PartialDataSet LabelPrimaryData, PartialDataSet? LabelSecondaryData = null, PartialDataSet? LabelTertiaryData = null)
+public class ScanOutput
 {
     /// <summary>
     /// The Process that produced the ScanOutput.
     /// </summary>
-    public Process ScanProcess = ScanProcess;
+    public Process ScanProcess;
 
     /// <summary>
     /// The Date and Time on which the ScanOutput was produced.
     /// </summary>
-    public DateTime ScanDate = ScanDate;
+    public DateTime ScanDate;
 
     /// <summary>
     /// The IP Address of the Scanner that produced the ScanOutput.
     /// </summary>
-    public IPAddress ScanAddress = ScanAddress;
+    public IPAddress ScanAddress;
 
     /// <summary>
     /// The Process that printed the scanned Label.
     /// </summary>
-    public Process LabelProcess = LabelProcess;
+    public Process LabelProcess;
 
     /// <summary>
     ///  The Part that the scanned Label was printed for.
     /// </summary>
-    public Part LabelPart = LabelPart;
+    public Part LabelPart;
 
     /// <summary>
     /// The variably-required fields of manufacturing data assigned to the Basket that the scanned Label was applied to.
     /// </summary>
-    public VariableFieldSet LabelVariableFields = LabelVariableFields;
+    public VariableFieldSet LabelVariableFields;
 
     /// <summary>
     /// The Date and Time at which the scanned Label was produced/printed.
     /// </summary>
-    public DateTime LabelProductionDate = LabelProductionDate;
+    public DateTime LabelProductionDate;
 
     /// <summary>
     /// The initial Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet LabelPrimaryData = LabelPrimaryData;
+    public PartialDataSet LabelPrimaryData;
 
     /// <summary>
     /// The first optional, additional Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet? LabelSecondaryData = LabelSecondaryData;
+    public PartialDataSet? LabelSecondaryData;
 
     /// <summary>
     /// The second optional, additional Quantity, Shift, and Operator for the scanned Label. 
     /// </summary>
-    public PartialDataSet? LabelTertiaryData = LabelTertiaryData;
+    public PartialDataSet? LabelTertiaryData;
 
     /// <summary>
-    /// Attempts to find a Process that matches ProcessFullName in the Process Database.
+    /// Creates a new ScanOutput.
     /// </summary>
-    /// <param name="ProcessFullName"></param>
-    /// <returns></returns>
-    /// <exception cref="DatabaseException"></exception>
-    private static async Task<Process?> RetrieveProcess(string ProcessFullName, HttpClient Client, UserAgent Agent)
+    /// <param name="scanProcess"></param>
+    /// <param name="scanDate"></param>
+    /// <param name="scanAddress"></param>
+    /// <param name="labelProcess"></param>
+    /// <param name="labelPart"></param>
+    /// <param name="labelVariableFields"></param>
+    /// <param name="labelProductionDate"></param>
+    /// <param name="labelPrimaryData"></param>
+    /// <param name="labelSecondaryData"></param>
+    /// <param name="labelTertiaryData"></param>
+    public ScanOutput(Process scanProcess, DateTime scanDate, IPAddress scanAddress, Process labelProcess, Part labelPart, VariableFieldSet labelVariableFields, DateTime labelProductionDate, PartialDataSet labelPrimaryData, PartialDataSet? labelSecondaryData = null, PartialDataSet? labelTertiaryData = null)
     {
-        // retrieve all Processes from the Database
-        IEnumerable<Process>? ProcessesFromDatabase;
-        try
-        {
-            ProcessesFromDatabase = await ProcessService.GetAll(Client, Agent);
-        }
-        // some database-generated issue
-        catch (HttpRequestException _ex)
-        {
-            throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
-        }
-        // some formatting issue
-        catch (JsonException _ex)
-        {
-            throw new DatabaseException("Could not process JSON response.", _ex);
-        }
-        // no Processes retrieved
-        if (ProcessesFromDatabase is null)
-        {
-            return null;
-        }
-        // attempt to locate the Process using the name in the ScanOutput
-        Process? Process = ProcessesFromDatabase
-            .Where(x => x.FullName.Equals(ProcessFullName))
-            .FirstOrDefault();
-        return Process;
-    }
-    
-    /// <summary>
-    /// Attempts to find a Part that matches PartNumber and is scanned by ScannedBy in the Part Database.
-    /// </summary>
-    /// <param name="PartNumber"></param>
-    /// <param name="ScannedBy"></param>
-    /// <returns></returns>
-    /// <exception cref="DatabaseException"></exception>
-    private static async Task<Part?> RetrievePart(string PartNumber, int ScannedBy, HttpClient Client, UserAgent Agent)
-    {
-        // retrieve all Parts from the Database
-        IEnumerable<Part>? PartsFromDatabase;
-        try
-        {
-            PartsFromDatabase = await PartService.GetPrintedByProcess(ScannedBy, Client, Agent);
-        }
-        // some database-generated issue
-        catch (HttpRequestException _ex)
-        {
-            throw new DatabaseException("Could not retreive Parts from the Database.", _ex);
-        }
-        // some formatting issue
-        catch (JsonException _ex)
-        {
-            throw new DatabaseException("Could not process JSON response.", _ex);
-        }
-        // no Parts retrieved
-        if (PartsFromDatabase is null)
-        {
-            return null;
-        }
-        // attempt to locate the Part using the name in the ScanOutput
-        Part? Part = PartsFromDatabase
-            .Where(x => x.PartNumber.Equals(PartNumber))
-            .FirstOrDefault();
-        return Part;
-    }
-
-    /// <summary>
-    /// Attempts to create a ScanOutput object from a passed Comma-separated value string.
-    /// </summary>
-    /// <param name="CSVLine"></param>
-    /// <returns></returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="FormatException"></exception>
-    /// <exception cref="DatabaseException"></exception>
-    /// <exception cref="OverflowException"></exception>
-    public static async Task<ScanOutput> ParseCSV(string CSVLine, HttpClient Client, UserAgent Agent)
-    {
-        // split the line by the comma character
-        string[] SplitLine = CSVLine.Split(',');
-        // attempt to retrieve the ScanOutput's ScanProcess
-        Process? ScanProcess = await RetrieveProcess(SplitLine[0], Client, Agent);
-        if (ScanProcess is null)
-        {
-            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[0]}'.");
-        }
-        // attempt to retrieve the ScanOutput's LabelProcess
-        Process? LabelProcess = await RetrieveProcess(SplitLine[3], Client, Agent);
-        if (LabelProcess is null)
-        {
-            throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[3]}'.");
-        }
-        // attempt to retrieve the ScanOutput's LabelPart
-        Part? LabelPart = await RetrievePart(SplitLine[4], LabelProcess.Id, Client, Agent);
-        if (LabelPart is null)
-        {
-            throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[4]}'.");
-        }
-        // parse a VariableFieldSet from the line
-        VariableFieldSet VariableFields;
-        try
-        {
-            VariableFields = VariableFieldSet.ParseCSV(SplitLine[7..^3], LabelProcess.RequiredFields);
-        }
-        catch (ArgumentException)
-        {
-            throw;
-        }
-        // parse PartialDataSets
-        List<PartialDataSet?> Partials;
-        try
-        {
-            Partials = PartialDataSet.Parse(SplitLine[6], SplitLine[^2], SplitLine[^1])!;
-        }
-        catch (ArgumentException)
-        {
-            throw;
-        }
-        // ensure at least one PartialDataSet (primary) exists
-        if (Partials.Count < 1 || Partials[0] is null)
-        {
-            throw new FormatException($"Could not parse the Primary Quantity, Shift, and Operator set from '{CSVLine}'.");
-        }
-        // fill Partials to create a full set of Primary and two additional PartialDataSets
-        while (Partials.Count < 3)
-        {
-            Partials.Add(null);
-        }
-        // create a new ScanOutput from the retrieved Process, Part, VariableFields, and other information
-        try
-        {
-            return new ScanOutput
-            (
-                ScanProcess: ScanProcess,
-                ScanDate: DateTime.ParseExact(SplitLine[1], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-                ScanAddress: IPAddress.Parse(SplitLine[2]),
-                LabelProcess: LabelProcess,
-                LabelPart: LabelPart,
-                LabelVariableFields: VariableFields,
-                LabelProductionDate: DateTime.ParseExact(SplitLine[^3], "MM/dd/yyyy-HH:mm:ss", CultureInfo.InvariantCulture),
-                LabelPrimaryData: Partials[0]!,
-                LabelSecondaryData: Partials[1],
-                LabelTertiaryData: Partials[2]
-            );
-        }
-        // there was a null argument passed to one of the Parses
-        catch (ArgumentNullException)
-        {
-            throw new ArgumentException("One or more fields in 'CSVLine' was null for a required value.");
-        }
-        // the ShiftExtensions.FromString method was passed an invalid value
-        catch (ArgumentException)
-        {
-            throw;
-        }
-        // one of the values was in an invalid format
-        catch (FormatException)
-        {
-            throw;
-        }
-        // the bytes passed to int.Parse overflowed the Int32 size limitation
-        catch (OverflowException)
-        {
-            throw;
-        }
+        ScanProcess = scanProcess;
+        ScanDate = scanDate;
+        ScanAddress = scanAddress;
+        LabelProcess = labelProcess;
+        LabelPart = labelPart;
+        LabelVariableFields = labelVariableFields;
+        LabelProductionDate = labelProductionDate;
+        LabelPrimaryData = labelPrimaryData;
+        LabelSecondaryData = labelSecondaryData;
+        LabelTertiaryData = labelTertiaryData;
     }
 
     /// <summary>
