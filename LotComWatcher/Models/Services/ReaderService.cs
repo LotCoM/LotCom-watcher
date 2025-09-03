@@ -5,6 +5,7 @@ using LotCom.Database.Caching;
 using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Exceptions;
+using LotComWatcher.Models.Factories;
 using Newtonsoft.Json;
 
 namespace LotComWatcher.Models.Services;
@@ -12,7 +13,7 @@ namespace LotComWatcher.Models.Services;
 /// <summary>
 /// Provides reading methods to pull Scanner output from the output file.
 /// </summary>
-public static class ReaderService
+public class ReaderService : IReaderService
 {
     /// <summary>
     /// The raw output file that contains scan results from LotCom Scanners.
@@ -20,20 +21,51 @@ public static class ReaderService
     private const string OutputFile = @"C:\LotCom\scan_out.txt";
 
     /// <summary>
-    /// Provides a cache mechanism for storing retrieved Processes.
+    /// A cache mechanism for storing retrieved Processes.
     /// </summary>
-    private static ProcessCache _processCache = new ProcessCache();
+    private readonly ProcessCache _processCache;
 
     /// <summary>
-    /// Provides a cache mechanism for storing retrieved Parts.
+    /// A cache mechanism for storing retrieved Parts.
     /// </summary>
-    private static PartCache _partCache = new PartCache();
+    private readonly PartCache _partCache;
+
+    /// <summary>
+    /// HttpClient configured to communicate with the LotCom system.
+    /// </summary>
+    private readonly HttpClient _httpClient;
+
+    /// <summary>
+    /// UserAgent used to authenticate API calls in the LotCom system.
+    /// </summary>
+    private readonly UserAgent _agent;
+    
+    /// <summary>
+    /// Factory used to build ScanOutput objects.
+    /// </summary>
+    private readonly ScanOutputFactory _factory;
+
+    /// <summary>
+    /// Creates a new ReaderService.
+    /// </summary>
+    /// <param name="processCache"></param>
+    /// <param name="partCache"></param>
+    /// <param name="http"></param>
+    /// <param name="agent"></param>
+    public ReaderService(ProcessCache processCache, PartCache partCache, HttpClient http, UserAgent agent, ScanOutputFactory factory)
+    {
+        _processCache = processCache;
+        _partCache = partCache;
+        _httpClient = http;
+        _agent = agent;
+        _factory = factory;
+    }
 
     /// <summary>
     /// Parses string-based Scan outputs to an IEnumerable of ScanOutput objects.
     /// </summary>
     /// <returns></returns>
-    private static async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans, HttpClient Client, UserAgent Agent)
+    public async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans)
     {
         // check for faulting parses and remove them from the enumerable
         IEnumerable<Task<ScanOutput>> ParseTasks = [];
@@ -42,7 +74,7 @@ public static class ReaderService
             Task<ScanOutput>? Parse;
             try
             {
-                Parse = ScanOutput.ParseCSV(_raw, _processCache, _partCache, Client, Agent);
+                Parse = _factory.CreateFromCSV(_raw);
             }
             catch
             {
@@ -67,13 +99,13 @@ public static class ReaderService
     /// </summary>
     /// <returns>An IEnumerable of Scan results as ScanOutput objects.</returns>
     /// <exception cref="OutputFileAccessException"></exception>
-    public static async Task<IEnumerable<ScanOutput>> ReadNewScans(HttpClient Client, UserAgent Agent)
+    public async Task<IEnumerable<ScanOutput>> ReadNewScans()
     {
         // populate caches with initial Process and Part data
         IEnumerable<Process>? ProcessesFromDatabase;
         try
         {
-            ProcessesFromDatabase = await ProcessService.GetAll(Client, Agent);
+            ProcessesFromDatabase = await ProcessService.GetAll(_httpClient, _agent);
         }
         // some database-generated issue
         catch (HttpRequestException _ex)
@@ -93,7 +125,7 @@ public static class ReaderService
         IEnumerable<Part>? PartsFromDatabase;
         try
         {
-            PartsFromDatabase = await PartService.GetAll(Client, Agent);
+            PartsFromDatabase = await PartService.GetAll(_httpClient, _agent);
         }
         // some database-generated issue
         catch (HttpRequestException _ex)
@@ -129,7 +161,7 @@ public static class ReaderService
             );
         }
         // parse ScanOutput objects from the Raw Scans
-        IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans, Client, Agent);
+        IEnumerable<ScanOutput> ParsedScans = await ParseScans(RawScans);
         return ParsedScans;
     }
 
@@ -137,7 +169,7 @@ public static class ReaderService
     /// Clears the contents of the configured Scanner Output file.
     /// </summary>
     /// <returns></returns>
-    public static async Task ClearOutputs()
+    public async Task ClearOutputs()
     {
         // clear the file contents
         await File.WriteAllTextAsync(OutputFile, "");
