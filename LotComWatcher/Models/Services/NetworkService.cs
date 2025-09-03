@@ -10,12 +10,16 @@ namespace LotComWatcher.Models.Services;
 /// <summary>
 /// Provides methods to communicate with Scanners over TCP network connections.
 /// </summary>
-public static class NetworkService
+public class NetworkService : INetworkService
 {
     /// <summary>
     /// Sets the default communication port for sending messages to the Cognex Scanners.
     /// </summary>
-    private const int DefaultPort = 23;
+    public int DefaultPort
+    {
+        get { return 23; }
+        set { }
+    }
 
     /// <summary>
     /// Pings an endpoint (generally a Scanner) for successful connection.
@@ -24,7 +28,7 @@ public static class NetworkService
     /// <returns>'true' if the Ping was able to connect successfully.</returns>
     /// <exception cref="SocketException"></exception>
     /// <exception cref="SystemException"></exception>
-    private static async Task<bool> Ping(TcpClient Client, IPEndPoint EndPoint)
+    public async Task<bool> Ping(TcpClient Client, IPEndPoint EndPoint)
     {
         // attempt to connect to the EndPoint
         try
@@ -63,7 +67,7 @@ public static class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendMessage(IPAddress ScannerAddress, string Message)
+    public async Task<bool> SendMessage(IPAddress ScannerAddress, string Message)
     {
         TcpClient MessageClient = new TcpClient();
         // initialize a TCP endoint that connects to the targeted scanner
@@ -123,7 +127,7 @@ public static class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
+    public async Task<bool> SendDataValidationError(IPAddress ScannerAddress, string LCDText, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -155,7 +159,7 @@ public static class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, IEnumerable<int> PreviousProcess)
+    public async Task<bool> SendMissingPreviousScanError(IPAddress ScannerAddress, int Duration, IEnumerable<int> PreviousProcess)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -186,7 +190,7 @@ public static class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
+    public async Task<bool> SendDuplicateScanError(IPAddress ScannerAddress, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -217,7 +221,7 @@ public static class NetworkService
     /// <returns>'true' if Message was successfully sent to ScannerAddress.</returns>
     /// <exception cref="SystemException"></exception>
     /// <exception cref="ArgumentException"></exception>
-    public static async Task<bool> SendInvalidPartError(IPAddress ScannerAddress, int Duration)
+    public async Task<bool> SendInvalidPartError(IPAddress ScannerAddress, int Duration)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
@@ -247,7 +251,7 @@ public static class NetworkService
     /// <param name="Fault"></param>
     /// <returns></returns>
     /// <exception cref="SystemException"></exception>
-    public static async Task<bool> SendScanValidationError(ScanOutput New, int Duration, ValidationFailure Fault)
+    public async Task<bool> SendScanValidationError(ScanOutput New, int Duration, ValidationFailure Fault)
     {
         // send Data Validation Failure and Send Alert DMCCs to the Scanner
         try
