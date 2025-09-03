@@ -1,5 +1,6 @@
 using LotCom.Core.Models;
 using LotCom.Database.Auth;
+using LotCom.Database.Caching;
 using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
@@ -9,23 +10,46 @@ namespace LotComWatcher.Models.Services;
 /// <summary>
 /// Provides insertion validation methods for ScanOutput objects.
 /// </summary>
-public static class ScanValidationService
+public class ValidationService : IValidationService
 {
+    /// <summary>
+    /// HttpClient configured to communicate with the LotCom system.
+    /// </summary>
+    private readonly HttpClient _httpClient;
+
+    /// <summary>
+    /// UserAgent used to authenticate API calls in the LotCom system.
+    /// </summary>
+    private readonly UserAgent _agent;
+
+    /// <summary>
+    /// Creates a new ValidationService.
+    /// </summary>
+    /// <param name="processCache"></param>
+    /// <param name="partCache"></param>
+    /// <param name="http"></param>
+    /// <param name="agent"></param>
+    public ValidationService(HttpClient http, UserAgent agent)
+    {
+        _httpClient = http;
+        _agent = agent;
+    }
+
     /// <summary>
     /// Performs validation steps to ensure that New can be inserted, given the DbSet context.
     /// </summary>
     /// <param name="New"></param>
     /// <param name="DbSet"></param>
     /// <returns></returns>
-    public static async Task<ValidationFailure> Validate(ScanOutput New, HttpClient Client, UserAgent Agent)
+    public async Task<ValidationFailure> Validate(ScanOutput New)
     {
         // retrieve any Scans that match the Serial Number of the new ScanOutput
         Scan NewAsScan = New.ToScan();
         IEnumerable<Scan>? Matches = await ScanService.GetWithSerialNumber
         (
             NewAsScan.GetSerialNumber().Value,
-            Client,
-            Agent
+            _httpClient,
+            _agent
         );
         if (Matches is null || !Matches.Any())
         {
