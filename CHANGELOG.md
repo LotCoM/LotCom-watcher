@@ -25,3 +25,8 @@
 - [`feat/1.0.21`](https://github.com/Yamada-North-America/LotCom-watcher/pull/36):
   - Integrate with change to `DAL` in **LotCom Libraries** that requires the LotCom apps to provide their own `HttpClient`.
   - Add dependency injection of `HttpClient` and `UserAgent` services.
+
+# `1.0.3`
+### Caching
+- [`feat/1.0.3`](https://github.com/Yamada-North-America/LotCom-watcher/pull/39):
+  - Implement `ICache` and caching mechanisms from **LotCom Libraries** to improve performance.
