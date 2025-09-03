@@ -22,6 +22,14 @@ public class NetworkService : INetworkService
     }
 
     /// <summary>
+    /// Creates a new NetworkService.
+    /// </summary>
+    public NetworkService()
+    {
+
+    }
+
+    /// <summary>
     /// Pings an endpoint (generally a Scanner) for successful connection.
     /// </summary>
     /// <param name="EndPoint"></param>
