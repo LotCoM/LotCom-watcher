@@ -1,4 +1,6 @@
 using LotCom.Core.Models;
+using LotCom.Database.Auth;
+using LotCom.Database.Services;
 using LotComWatcher.Models.Datatypes;
 using LotComWatcher.Models.Enums;
 
@@ -10,86 +12,35 @@ namespace LotComWatcher.Models.Services;
 public static class ScanValidationService
 {
     /// <summary>
-    /// Validates that a matching Scan exists in the previous Process' database table.
-    /// </summary>
-    /// <param name="New"></param>
-    /// <returns></returns>
-    private static async Task<bool> ValidatePreviousProcessScanExists(ScanOutput New, IEnumerable<Scan> DbSet)
-    {
-        // confirm that the Label Process needs to have a Previous Process performed
-        if (!New.LabelProcess.HasPreviousProcess())
-        {
-            return true;
-        }
-        return await Task.Run(() =>
-        {
-            // compare the New data to each of the DatabaseSet entries
-            Scan? Previous = DbSet
-                .Where
-                (x => New
-                    .ToScan()
-                    .IsFromPreviousProcess(x)
-                )
-                .FirstOrDefault();
-            if (Previous is null)
-            {
-                return false;
-            }
-            else
-            {
-                return true;
-            }
-        });
-    }
-
-    /// <summary>
-    /// Checks if New is unique within the context of its Process. 
-    /// </summary>
-    /// <param name="New"></param>
-    /// <returns>true if the Scan is Unique; false if not.</returns>
-    private static async Task<bool> ValidateAsUniqueScan(ScanOutput New, IEnumerable<Scan> DbSet)
-    {
-        return await Task.Run(() =>
-        {
-            // attempt to find a Scan that matches in serial, part, and date
-            Scan? Match = DbSet
-                .Where(x => x.IsIdentical(New.ToScan()))
-                .FirstOrDefault();
-            if (Match is null)
-            {
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        });
-    }
-
-    /// <summary>
     /// Performs validation steps to ensure that New can be inserted, given the DbSet context.
     /// </summary>
     /// <param name="New"></param>
     /// <param name="DbSet"></param>
     /// <returns></returns>
-    public static async Task<ValidationFailure> Validate(ScanOutput New, IEnumerable<Scan> DbSet)
+    public static async Task<ValidationFailure> Validate(ScanOutput New, HttpClient Client, UserAgent Agent)
     {
-        // validation measures from least to most expensive:
-        // -- Scan Process has NO Previous Processes
-        //    OR
-        //    Scan Process has Label Process as a Previous Process
-        //      -- if not, no Part from Previous Process is scannable
-        // -- Scan Process can scan Label Part
-        //      -- if not, this Part is not valid for Scan Process
-        // -- Label Process Required Variable Fields have non-null values
-        //      -- if not, the Label is not valid for Label Process
-        // -- Label Serial Number has been scanned by a Previous Process
-        //      -- if not, the Process was skipped
-        // confirm that the ScanOutput information is unique
-        if (!await ValidateAsUniqueScan(New, DbSet))
+        // retrieve any Scans that match the Serial Number of the new ScanOutput
+        Scan NewAsScan = New.ToScan();
+        IEnumerable<Scan>? Matches = await ScanService.GetWithSerialNumber
+        (
+            NewAsScan.GetSerialNumber().Value,
+            Client,
+            Agent
+        );
+        if (Matches is null || !Matches.Any())
+        {
+            Matches = [];
+        }
+        // Unique Check
+        // attempt to find a Scan that matches in serial, part, and date
+        Scan? Duplicate = Matches
+            .Where(x => x.IsIdentical(NewAsScan))
+            .FirstOrDefault();
+        if (Duplicate is not null)
         {
             return ValidationFailure.Duplicate;
         }
+        // Valid Process Flow (Label Process is prior to Scan Process)
         // confirm that Scan Process has Label Process as a Previous Process
         if
         (
@@ -100,6 +51,7 @@ public static class ScanValidationService
             // Scan Process cannot accept Labels from Label Process
             return ValidationFailure.InvalidProcess;
         }
+        // Valid Part (Scan Process can Scan Label Part)
         // confirm that Scan Process can scan Label Part
         if
         (
@@ -110,6 +62,7 @@ public static class ScanValidationService
             // Scan Process cannot accept Labels for this Part
             return ValidationFailure.InvalidPart;
         }
+        // Required Field Validation
         // confirm that all of Label Process' Required Variable Fields have values
         if
         (
@@ -151,12 +104,32 @@ public static class ScanValidationService
         {
             return ValidationFailure.HeatNumber;
         }
-        // confirm that the Label Serial # has been scanned by a Process Previous to Scan Process
-        if (!await ValidatePreviousProcessScanExists(New, DbSet))
+        // Validate that Previous Process Scanned for Serial Number (if applicable)
+        // confirm that the Label Process needs to have a Previous Process performed
+        if (!New.LabelProcess.HasPreviousProcess())
         {
-            return ValidationFailure.MissingPrevious;
+            // ScanOutput does not require a previous scan
+            // all validations have passed
+            return ValidationFailure.Accepted;
         }
-        // all validations passed
-        return ValidationFailure.Accepted;
+        else
+        {
+            // compare the New data to each of the Matching entries
+            Scan? Previous = Matches
+                .Where
+                (x => New
+                    .ToScan()
+                    .IsFromPreviousProcess(x)
+                )
+                .FirstOrDefault();
+            if (Previous is null)
+            {
+                return ValidationFailure.MissingPrevious;
+            }
+            else
+            {
+                return ValidationFailure.Accepted;
+            }
+        }
     }
 }
