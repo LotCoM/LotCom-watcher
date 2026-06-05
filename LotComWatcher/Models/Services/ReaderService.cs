@@ -67,31 +67,24 @@ public class ReaderService : IReaderService
     /// <returns></returns>
     public async Task<IEnumerable<ScanOutput>> ParseScans(IEnumerable<string> RawScans)
     {
-        // check for faulting parses and remove them from the enumerable
-        IEnumerable<Task<ScanOutput>> ParseTasks = [];
+        List<Task<ScanOutput?>> ParseTasks = new List<Task<ScanOutput?>>();
+
         foreach (string _raw in RawScans)
         {
-            Task<ScanOutput>? Parse;
             try
             {
-                Parse = _factory.CreateFromCSV(_raw);
+                Task<ScanOutput?> task = _factory.CreateFromCSV(_raw);
+                ParseTasks.Add(task);
             }
             catch
             {
-                Parse = null;
-            }
-            if (Parse is null)
-            {
                 continue;
             }
-            else if (!Parse.IsFaulted)
-            {
-                ParseTasks = ParseTasks.Append(Parse!);
-            }
         }
-        // asynchronously parse each Raw Scan into a ScanOutput object
-        ScanOutput[] ParseResults = await Task.WhenAll(ParseTasks);
-        return ParseResults;
+        
+        ScanOutput?[] results = await Task.WhenAll(ParseTasks);
+
+        return results.Where(x => x != null)!;
     }
 
     /// <summary>
@@ -110,7 +103,7 @@ public class ReaderService : IReaderService
         // some database-generated issue
         catch (HttpRequestException _ex)
         {
-            throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
+            throw new DatabaseException("Could not retrieve Processes from the Database.", _ex);
         }
         // some formatting issue
         catch (JsonException _ex)
@@ -130,7 +123,7 @@ public class ReaderService : IReaderService
         // some database-generated issue
         catch (HttpRequestException _ex)
         {
-            throw new DatabaseException("Could not retreive Parts from the Database.", _ex);
+            throw new DatabaseException("Could not retrieve Parts from the Database.", _ex);
         }
         // some formatting issue
         catch (JsonException _ex)
