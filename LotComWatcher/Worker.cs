@@ -104,6 +104,7 @@ public class Worker : BackgroundService
                 IEnumerable<ScanOutput> Outputs = await _readerService.ReadNewScans();
                 if (!Outputs.Any())
                 {
+                    await _readerService.ClearOutputs();
                     continue;
                 }
                 // perform processing loop on each new ScanOutput
