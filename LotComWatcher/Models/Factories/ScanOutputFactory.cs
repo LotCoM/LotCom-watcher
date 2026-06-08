@@ -86,7 +86,7 @@ public class ScanOutputFactory
     /// <exception cref="FormatException"></exception>
     /// <exception cref="DatabaseException"></exception>
     /// <exception cref="OverflowException"></exception>
-    public async Task<ScanOutput> CreateFromCSV(string CSVLine)
+    public async Task<ScanOutput?> CreateFromCSV(string CSVLine)
     {
         // split the line by the comma character
         string[] SplitLine = CSVLine.Split(',');
@@ -107,7 +107,7 @@ public class ScanOutputFactory
             // some database-generated issue
             catch (HttpRequestException _ex)
             {
-                throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
+                throw new DatabaseException("Could not retrieve Processes from the Database.", _ex);
             }
             // some formatting issue
             catch (JsonException _ex)
@@ -117,7 +117,10 @@ public class ScanOutputFactory
             // no Processes retrieved
             if (ProcessesFromDatabase is null)
             {
-                throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[0]}'.");
+                // 2026/06/04: Log the exception instead of throwing exception
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Process like '{SplitLine[0]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
             // attempt to locate the Process using the name in the ScanOutput
             ScanProcess = ProcessesFromDatabase
@@ -125,7 +128,10 @@ public class ScanOutputFactory
                 .FirstOrDefault();
             if (ScanProcess is null)
             {
-                throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[0]}'.");
+                // 2026/06/04: Log the exception instead of throwing exception
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Process like '{SplitLine[0]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
             else
             {
@@ -150,7 +156,7 @@ public class ScanOutputFactory
             // some database-generated issue
             catch (HttpRequestException _ex)
             {
-                throw new DatabaseException("Could not retreive Processes from the Database.", _ex);
+                throw new DatabaseException("Could not retrieve Processes from the Database.", _ex);
             }
             // some formatting issue
             catch (JsonException _ex)
@@ -160,7 +166,10 @@ public class ScanOutputFactory
             // no Processes retrieved
             if (ProcessesFromDatabase is null)
             {
-                throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[3]}'.");
+                // 2026/06/04: Log the exception instead of throwing exception
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Process like '{SplitLine[3]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
             // attempt to locate the Process using the name in the ScanOutput
             LabelProcess = ProcessesFromDatabase
@@ -168,7 +177,10 @@ public class ScanOutputFactory
                 .FirstOrDefault();
             if (LabelProcess is null)
             {
-                throw new ArgumentException($"Could not retrieve a Process like '{SplitLine[3]}'.");
+                // 2026/06/04: Log the exception instead of throwing exception
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Process like '{SplitLine[3]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
             else
             {
@@ -176,52 +188,53 @@ public class ScanOutputFactory
                 _processCache.Add(LabelProcess);
             }
         }
-        // attempt to retrieve the ScanOutput's LabelPart
-        // check for the Part in the Cache
-        Part? LabelPart = _partCache.CacheItems
-            .Where(x =>
-                x.PartNumber.Equals(SplitLine[4])
-                && x.ParentProcess == LabelProcess.Id
-            )
-            .FirstOrDefault();
-        // Part was not in the cache
-        if (LabelPart is null)
+        
+        // 2026/06/05：Fix issue of one Part can be scanned by more than one process
+        Part? LabelPart;
+        try
         {
-            // retrieve all Parts from the Database
-            IEnumerable<Part>? PartsFromDatabase;
-            try
+            var partsByPrint = await PartService.GetPrintedByProcess(LabelProcess.Id, _httpClient, _agent);
+            var partsByScan = await PartService.GetScannedByProcess(ScanProcess.Id, _httpClient, _agent);
+            
+            if (partsByPrint == null || !partsByPrint.Any() || 
+                partsByScan == null || !partsByScan.Any())
             {
-                PartsFromDatabase = await PartService.GetPrintedByProcess(LabelProcess.Id, _httpClient, _agent);
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Part like '{SplitLine[4]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
-            // some database-generated issue
-            catch (HttpRequestException _ex)
-            {
-                throw new DatabaseException("Could not retreive Parts from the Database.", _ex);
-            }
-            // some formatting issue
-            catch (JsonException _ex)
-            {
-                throw new DatabaseException("Could not process JSON response.", _ex);
-            }
-            // no Parts retrieved
-            if (PartsFromDatabase is null)
-            {
-                throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[4]}'.");
-            }
-            // attempt to locate the Part using the name in the ScanOutput
-            LabelPart = PartsFromDatabase
-                .Where(x => x.PartNumber.Equals(SplitLine[4]))
-                .FirstOrDefault();
+
+            // Use Dictionary to achieve O(1) complexity for intersection lookup and target matching.
+            // Convert the Scan list into a dictionary keyed by Id (assuming Id is the unique identifier).
+            var scanDict = partsByScan.ToDictionary(p => p.Id);
+            
+            // Get the target Part by filter the partsByPrint、partsByScan、SplitLine[4]
+            LabelPart = partsByPrint
+                .Where(p => scanDict.ContainsKey(p.Id)) // 高效的 O(1) 查找
+                .FirstOrDefault(p => p.PartNumber.Equals(SplitLine[4]));
+            
             if (LabelPart is null)
             {
-                throw new ArgumentException($"Could not retrieve a Part like '{SplitLine[4]}'.");
+                string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not retrieve a Part like '{SplitLine[4]}'.";
+                LoggerHelper.LogException(errorMsg);
+                return null;
             }
-            else
+
+            // Batch save to cache
+            foreach (var part in partsByPrint.Where(p => scanDict.ContainsKey(p.Id)))
             {
-                // update the Cache
-                _partCache.Add(LabelPart);
+                _partCache.Add(part);
             }
         }
+        catch (HttpRequestException _ex)
+        {
+            throw new DatabaseException("Could not retrieve Parts from the Database.", _ex);
+        }
+        catch (JsonException _ex)
+        {
+            throw new DatabaseException("Could not process JSON response.", _ex);
+        }
+        
         // parse a VariableFieldSet from the line
         VariableFieldSet VariableFields;
         try
@@ -245,7 +258,10 @@ public class ScanOutputFactory
         // ensure at least one PartialDataSet (primary) exists
         if (Partials.Count < 1 || Partials[0] is null)
         {
-            throw new FormatException($"Could not parse the Primary Quantity, Shift, and Operator set from '{CSVLine}'.");
+            // 2026/06/04: Log the exception instead of throwing exception
+            string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] Could not parse the Primary Quantity, Shift, and Operator set.";
+            LoggerHelper.LogException(errorMsg);
+            return null;
         }
         // fill Partials to create a full set of Primary and two additional PartialDataSets
         while (Partials.Count < 3)
@@ -272,7 +288,10 @@ public class ScanOutputFactory
         // there was a null argument passed to one of the Parses
         catch (ArgumentNullException)
         {
-            throw new ArgumentException("One or more fields in 'CSVLine' was null for a required value.");
+            // 2026/06/04: Log the exception instead of throwing exception
+            string errorMsg = $"{CSVLine}{Environment.NewLine}[Message] One or more fields in 'CSVLine' was null for a required value.";
+            LoggerHelper.LogException(errorMsg);
+            return null; // 返回 null，表示该行数据无效
         }
         // the ShiftExtensions.FromString method was passed an invalid value
         catch (ArgumentException)
