@@ -64,6 +64,7 @@ jobs:
       run: |
         # install dotnet tools
         dotnet tool install --global wix
+        wix eula accept wix7
         dotnet workload restore
       
     - name: Build
