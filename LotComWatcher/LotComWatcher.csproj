@@ -10,7 +10,7 @@
 		<!-- Restore NuGet packages with packages.lock.json file -->
 		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- Versions -->
-		<ApplicationDisplayVersion>1.0.5</ApplicationDisplayVersion>
+		<ApplicationDisplayVersion>1.0.6</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
   </PropertyGroup>
 
@@ -27,6 +27,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.5" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.5" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
